@@ -1,0 +1,45 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: consul
+spec:
+  replicas: {{ .Values.clusterSize }}
+  selector:
+    matchLabels:
+      app: consul
+  serviceName: consul
+  template:
+    metadata:
+      labels:
+        app: consul
+    spec:
+      containers:
+        - name: main
+          image: {{ .Values.image.name }}:{{ .Values.image.tag }}
+          args: ['agent', '-server', '-retry-join=consul', '-bootstrap-expect={{ .Values.clusterSize }}']
+          volumeMounts:
+            - name: data
+              mountPath: /consul/data
+          readinessProbe:
+            exec:
+              command: ['/bin/sh', '-c', 'consul members -status=alive | grep $(hostname)']
+          livenessProbe:
+            exec:
+              command: ['/bin/sh', '-c', 'consul members -status=alive | grep $(hostname)']
+            initialDelaySeconds: 60
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 100Mi
+        {{- if .Values.storageClassName }}
+        {{- if eq "-" .Values.storageClassName }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: "{{ .Values.storageClassName }}"
+        {{- end }}
+        {{- end }}

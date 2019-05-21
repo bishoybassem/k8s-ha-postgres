@@ -1,0 +1,8 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: consul
+spec:
+  clusterIP: None
+  selector:
+    app: consul
