@@ -1,0 +1,3 @@
+name: postgres
+version: 1.0.0
+description: Installs a highly available Postgres cluster 

@@ -1,0 +1,21 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: postgres
+spec: 
+  replicas: {{ .Values.clusterSize }}
+  selector: 
+    matchLabels:
+      app: postgres
+  serviceName: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: consul
+          image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
+          args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
+        - name: controller
+          image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
