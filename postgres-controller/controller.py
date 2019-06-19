@@ -1,15 +1,23 @@
-from election import Election, ElectionResultHandler
+import sys
+from os import path
+from election import Election, ElectionStatusHandler
 
 
-class PostgresMasterElectionResultHandler(ElectionResultHandler):
+class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def leadership_acquired(self):
-        print("I am currently the leader!")
+    def __init__(self, out_dir):
+        self._out_dir = out_dir
+
+    def handle_status(self, is_leader):
+        with open(path.join(self._out_dir, "role"), "w") as role_file:
+            role_file.write("master" if is_leader else "slave")
+
         return True
 
 
 def main():
-    election = Election("service/postgres/master", 10, PostgresMasterElectionResultHandler())
+    out_dir = sys.argv[1]
+    election = Election("service/postgres/master", 10, PostgresMasterElectionStatusHandler(out_dir))
     election.start()
     election.join()
 

@@ -1,0 +1,26 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: db-scripts
+data:
+  entrypoint-wrapper.sh: |
+    #!/bin/bash -e
+
+    until [ -f /status/role ]; do
+        echo "Waitig for the role file to be written by the controller!"
+        sleep 5s
+    done
+
+    if [ "$(cat /status/role)" == "slave" ]; then
+        echo "Starting as slave..."
+        export PGPASSWORD=${REPLICATION_PASSWORD}
+        pg_basebackup -h postgres -U replication -D ${PGDATA} -PRv
+    fi
+
+    exec docker-entrypoint.sh postgres
+  db-init.sh: |
+    #!/bin/bash -e
+
+    echo "Configuring replication for initial master..."
+    echo 'host replication replication all md5' >> ${PGDATA}/pg_hba.conf
+    psql -c "CREATE ROLE replication WITH REPLICATION LOGIN PASSWORD '$REPLICATION_PASSWORD'"

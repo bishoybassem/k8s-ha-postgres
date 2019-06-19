@@ -10,3 +10,12 @@ controller:
   image:
     name: postgres-controller
     tag: 1.0.0
+
+postgres:
+  image:
+    name: postgres
+    tag: 11.3
+  dbName: postgres
+  superuserName: postgres
+  superuserPassword: su123
+  replicationPassword: rep123
