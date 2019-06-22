@@ -52,17 +52,21 @@ spec:
                   key: replication
           readinessProbe:
             exec:
-              command: ['pg_isready']
+              command: ['pg_isready', '-U', 'monitoring', '-d', {{ .Values.postgres.dbName | quote }}]
           livenessProbe:
             exec:
-              command: ['pg_isready']
+              command: ['pg_isready', '-U', 'monitoring', '-d', {{ .Values.postgres.dbName | quote }}]
             initialDelaySeconds: 60
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
           args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
         - name: controller
           image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
-          args: ["/status"]
+          args: 
+            - --time-step=10
+            - --state-dir=/status
+            - --health-check-db={{ .Values.postgres.dbName }}
+            - --health-check-db-user=monitoring
           volumeMounts:
             - name: controller-status
               mountPath: /status

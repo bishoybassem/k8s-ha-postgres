@@ -2,6 +2,7 @@ import requests
 import socket
 import threading
 import time
+import logging
 from abc import ABC, abstractmethod
 
 
@@ -18,25 +19,30 @@ class Election(threading.Thread):
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
-    def __init__(self, election_key, time_step_seconds, election_status_handler):
-        super().__init__()
-        self._election_key = election_key
-        self._time_step_seconds = time_step_seconds
+    def __init__(self, consul_election_key, consul_session_checks, election_status_handler, time_step_seconds):
+        super().__init__(name=self.__class__.__name__)
+        self._consul_election_key = consul_election_key
+        self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
+        self._time_step_seconds = time_step_seconds
         self._session_id = self._create_consul_session()
 
     def _create_consul_session(self):
+        logging.info("Creating Consul session for leader election")
         response = requests.put(self.__class__.CONSUL_SESSION_URL.format("create"),
-                                json={"Checks": ["serfHealth"]})
+                                json={"Checks": self._consul_session_checks})
 
+        logging.info("Response (%d) %s" % (response.status_code, response.text))
         response.raise_for_status()
         return response.json()["ID"]
 
     def _acquire_lock(self):
-        response = requests.put(self.__class__.CONSUL_KV_URL.format(self._election_key),
+        logging.info("Attempting to acquire lock over election key")
+        response = requests.put(self.__class__.CONSUL_KV_URL.format(self._consul_election_key),
                                 params={"acquire": self._session_id},
                                 json={"Name": socket.gethostname()})
 
+        logging.info("Response (%d) %s" % (response.status_code, response.text))
         response.raise_for_status()
         return response.text == "true"
 
@@ -45,9 +51,8 @@ class Election(threading.Thread):
             is_leader = self._acquire_lock()
             proceed = self._election_status_handler.handle_status(is_leader)
             if not proceed:
-                print("Status handler decided to abort election loop!")
+                logging.info("Status handler decided to abort the election loop!")
                 break
 
-            print("Sleeping %d seconds ..." % self._time_step_seconds)
             time.sleep(self._time_step_seconds)
 
