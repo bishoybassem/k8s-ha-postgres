@@ -4,6 +4,7 @@ COPY requirements.txt /
 
 RUN pip install -r /requirements.txt
 
-COPY *.py app/
+COPY pg_controller /pg_controller
+COPY entrypoint.py /
 
-ENTRYPOINT ["python3", "-u", "app/controller.py"]
+ENTRYPOINT ["python3", "-u", "/entrypoint.py"]

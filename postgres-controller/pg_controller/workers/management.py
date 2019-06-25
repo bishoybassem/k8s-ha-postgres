@@ -1,7 +1,7 @@
 import http.server
 import threading
 import logging
-import state
+from pg_controller import state
 
 
 class ManagementRequestHandler(http.server.BaseHTTPRequestHandler):

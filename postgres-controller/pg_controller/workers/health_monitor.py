@@ -1,4 +1,4 @@
-import looping_thread
+from pg_controller.workers import looping_thread
 import requests
 import logging
 from abc import ABC, abstractmethod

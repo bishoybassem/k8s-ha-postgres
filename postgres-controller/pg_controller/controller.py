@@ -4,10 +4,10 @@ import logging
 import argparse
 import threading
 import signal
-import state
-from election import Election, ElectionStatusHandler
-from health_monitor import HealthMonitor, HealthCheck
-from management import ManagementServer
+from pg_controller import state
+from pg_controller.workers.election import Election, ElectionStatusHandler
+from pg_controller.workers.health_monitor import HealthMonitor, HealthCheck
+from pg_controller.workers.management import ManagementServer
 
 
 class PostgresHealthCheck(HealthCheck):
@@ -89,7 +89,7 @@ def stop(signum, frame):
             worker_thread.join()
 
 
-def main():
+def start():
     logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                         format='[%(asctime)s][%(threadName)s] %(levelname)s: %(message)s')
 
@@ -100,7 +100,3 @@ def main():
     start_health_monitor(args)
     start_election(args)
     start_management_server(args)
-
-
-if __name__ == '__main__':
-    main()

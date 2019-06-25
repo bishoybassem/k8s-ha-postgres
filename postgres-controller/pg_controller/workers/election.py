@@ -1,6 +1,6 @@
 import requests
 import socket
-import looping_thread
+from pg_controller.workers import looping_thread
 import logging
 from abc import ABC, abstractmethod
 
