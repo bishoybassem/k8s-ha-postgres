@@ -13,7 +13,7 @@ controller:
 
 postgres:
   image:
-    name: postgres
+    name: postgres-ha
     tag: 11.3
   dbName: postgres
   superuserName: postgres

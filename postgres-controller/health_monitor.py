@@ -1,6 +1,5 @@
-import threading
+import looping_thread
 import requests
-import time
 import logging
 from abc import ABC, abstractmethod
 
@@ -12,14 +11,14 @@ class HealthCheck(ABC):
         pass
 
 
-class HealthMonitor(threading.Thread):
+class HealthMonitor(looping_thread.LoopingThread):
 
     CONSUL_BASE_URL = "http://localhost:8500/v1"
     CONSUL_REGISTER_CHECK_URL = CONSUL_BASE_URL + "/agent/check/register"
     CONSUL_UPDATE_CHECK_URL = CONSUL_BASE_URL + "/agent/check/update/{}"
 
     def __init__(self, consul_check_name, health_check, time_step_seconds):
-        super().__init__(name=self.__class__.__name__)
+        super().__init__()
         self._consul_check_name = consul_check_name
         self._health_check = health_check
         self._time_step_seconds = time_step_seconds
@@ -45,9 +44,7 @@ class HealthMonitor(threading.Thread):
         logging.info("Response (%d) %s" % (response.status_code, response.text))
         response.raise_for_status()
 
-    def run(self):
-        while True:
-            is_healthy = self._health_check.do_health_check()
-            self._update_consul_check(is_healthy)
-
-            time.sleep(self._time_step_seconds)
+    def do_one_run(self):
+        is_healthy = self._health_check.do_health_check()
+        self._update_consul_check(is_healthy)
+        self.wait(self._time_step_seconds)

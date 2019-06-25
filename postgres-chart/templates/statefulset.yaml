@@ -13,28 +13,12 @@ spec:
       labels:
         app: postgres
     spec:
-      volumes:
-        - name: db-scripts
-          configMap: 
-            name: db-scripts
-            defaultMode: 0755
-        - name: controller-status
-          emptyDir: {}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image.name }}:{{ .Values.postgres.image.tag }}
           volumeMounts:
-            - name: controller-status
-              mountPath: /status
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-            - name: db-scripts
-              mountPath: /docker-entrypoint-initdb.d/db-init.sh
-              subPath: db-init.sh
-            - name: db-scripts
-              mountPath: /entrypoint-wrapper.sh
-              subPath: entrypoint-wrapper.sh
-          command: ["/entrypoint-wrapper.sh"]
           env:
             - name: POSTGRES_DB
               value: {{ .Values.postgres.dbName }}
@@ -50,13 +34,13 @@ spec:
                 secretKeyRef:
                   name: db-passwords
                   key: replication
-          readinessProbe:
-            exec:
-              command: ['pg_isready', '-U', 'monitoring', '-d', {{ .Values.postgres.dbName | quote }}]
+            - name: CONTROLLER_MANAGEMENT_PORT
+              value: "80"
           livenessProbe:
             exec:
-              command: ['pg_isready', '-U', 'monitoring', '-d', {{ .Values.postgres.dbName | quote }}]
-            initialDelaySeconds: 60
+              command: ["/liveness-probe.sh"]
+            initialDelaySeconds: 10
+            failureThreshold: 1
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
           args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
@@ -64,12 +48,14 @@ spec:
           image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
           args: 
             - --time-step=10
-            - --state-dir=/status
+            - --management-port=80
             - --health-check-db={{ .Values.postgres.dbName }}
             - --health-check-db-user=monitoring
-          volumeMounts:
-            - name: controller-status
-              mountPath: /status
+          readinessProbe:
+            httpGet:
+              port: 80
+              path: /controller/ready
+            failureThreshold: 1
   volumeClaimTemplates:
     - metadata:
         name: postgres-data

@@ -1,7 +1,6 @@
 import requests
 import socket
-import threading
-import time
+import looping_thread
 import logging
 from abc import ABC, abstractmethod
 
@@ -13,14 +12,14 @@ class ElectionStatusHandler(ABC):
         pass
 
 
-class Election(threading.Thread):
+class Election(looping_thread.LoopingThread):
 
     CONSUL_BASE_URL = "http://localhost:8500/v1"
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
     def __init__(self, consul_election_key, consul_session_checks, election_status_handler, time_step_seconds):
-        super().__init__(name=self.__class__.__name__)
+        super().__init__()
         self._consul_election_key = consul_election_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
@@ -46,13 +45,10 @@ class Election(threading.Thread):
         response.raise_for_status()
         return response.text == "true"
 
-    def run(self):
-        while True:
-            is_leader = self._acquire_lock()
-            proceed = self._election_status_handler.handle_status(is_leader)
-            if not proceed:
-                logging.info("Status handler decided to abort the election loop!")
-                break
-
-            time.sleep(self._time_step_seconds)
-
+    def do_one_run(self):
+        is_leader = self._acquire_lock()
+        proceed = self._election_status_handler.handle_status(is_leader)
+        if not proceed:
+            logging.info("Status handler decided to stop the election loop!")
+            self.stop()
+        self.wait(self._time_step_seconds)
