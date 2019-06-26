@@ -47,8 +47,8 @@ class Election(looping_thread.LoopingThread):
 
     def do_one_run(self):
         is_leader = self._acquire_lock()
-        proceed = self._election_status_handler.handle_status(is_leader)
-        if not proceed:
+        continue_trying = self._election_status_handler.handle_status(is_leader)
+        if not continue_trying:
             logging.info("Status handler decided to stop the election loop!")
             self.stop()
         self.wait(self._time_step_seconds)

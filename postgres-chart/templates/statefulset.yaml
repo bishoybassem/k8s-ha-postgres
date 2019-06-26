@@ -13,12 +13,17 @@ spec:
       labels:
         app: postgres
     spec:
+      volumes:
+        - name: shared
+          emptyDir: {}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image.name }}:{{ .Values.postgres.image.tag }}
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: shared
+              mountPath: /shared
           env:
             - name: POSTGRES_DB
               value: {{ .Values.postgres.dbName }}
@@ -36,6 +41,8 @@ spec:
                   key: replication
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
+            - name: PROMOTE_TRIGGER_FILE
+              value: /shared/promote
           livenessProbe:
             exec:
               command: ["/liveness-probe.sh"]
@@ -51,6 +58,10 @@ spec:
             - --management-port=80
             - --health-check-db={{ .Values.postgres.dbName }}
             - --health-check-db-user=monitoring
+            - --promote-trigger-file=/shared/promote
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
           readinessProbe:
             httpGet:
               port: 80

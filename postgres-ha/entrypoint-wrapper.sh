@@ -8,7 +8,7 @@ function get_role() {
 
 function role_decided() {
 	role=$(get_role)
-	if [ "$role" != "Master" ] && [ "$role" != "Slave" ]; then
+	if [ "$role" != "Master" ] && [ "$role" != "Replica" ]; then
 		return 1
 	fi
 	return 0
@@ -19,10 +19,11 @@ until role_decided; do
     sleep 5s
 done
 
-if [ "$(get_role)" == "Slave" ]; then
-    echo "Starting as a slave..."
+if [ "$(get_role)" == "Replica" ]; then
+    echo "Starting as a replica..."
     export PGPASSWORD=${REPLICATION_PASSWORD}
     pg_basebackup -h postgres -U replication -D ${PGDATA} -PRv
+    echo "trigger_file = '${PROMOTE_TRIGGER_FILE}'" >> ${PGDATA}/recovery.conf
 fi
 
 exec docker-entrypoint.sh postgres

@@ -34,10 +34,18 @@ class PostgresHealthCheck(HealthCheck):
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def handle_status(self, is_leader):
-        state.INSTANCE.role = state.ROLE_MASTER if is_leader else state.ROLE_SLAVE
+    def __init__(self, promote_trigger_file):
+        self._promote_trigger_file = promote_trigger_file
 
-        return True
+    def handle_status(self, is_leader):
+        state.INSTANCE.role = state.ROLE_MASTER if is_leader else state.ROLE_REPLICA
+
+        if is_leader:
+            logging.info("Creating trigger file for master promotion!")
+            open(self._promote_trigger_file, "w").close()
+
+        continue_trying = not is_leader
+        return continue_trying
 
 
 HEALTH_CHECK_NAME = "postgresAlive"
@@ -55,6 +63,8 @@ def get_args():
                         help='The name of the database to use for the test connection to postgres')
     parser.add_argument('--health-check-db-user',
                         help='The user to use for the test connection to postgres')
+    parser.add_argument('--promote-trigger-file',
+                        help='The file that triggers replica to master promotion')
 
     return parser.parse_args()
 
@@ -70,7 +80,7 @@ def start_health_monitor(args):
 def start_election(args):
     election = Election("service/postgres/master",
                         ["serfHealth", HEALTH_CHECK_NAME],
-                        PostgresMasterElectionStatusHandler(),
+                        PostgresMasterElectionStatusHandler(args.promote_trigger_file),
                         args.time_step)
     election.start()
     worker_threads.append(election)

@@ -9,6 +9,10 @@ class State:
     def role(self):
         return self._role
 
+    @property
+    def is_master(self):
+        return self._role == ROLE_MASTER
+
     @role.setter
     def role(self, role):
         self._role = role
@@ -22,5 +26,5 @@ class State:
 
 
 ROLE_MASTER = "Master"
-ROLE_SLAVE = "Slave"
+ROLE_REPLICA = "Replica"
 INSTANCE = State()
