@@ -17,6 +17,9 @@ spec:
       volumes:
         - name: shared
           emptyDir: {}
+        - name: haproxy-config
+          configMap:
+            name: haproxy-config
       containers:
         - name: postgres
           image: {{ .Values.postgres.image.name }}:{{ .Values.postgres.image.tag }}
@@ -46,9 +49,6 @@ spec:
               value: "80"
             - name: PROMOTE_TRIGGER_FILE
               value: /shared/promote
-          ports:
-            - name: tcp
-              containerPort: 5432
           livenessProbe:
             exec:
               command: ["/liveness-probe.sh"]
@@ -57,6 +57,14 @@ spec:
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
           args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
+        - name: haproxy
+          image: {{ .Values.haproxy.image.name }}:{{ .Values.haproxy.image.tag }}
+          volumeMounts:
+            - name: haproxy-config
+              mountPath: /usr/local/etc/haproxy
+          ports:
+            - name: tcp
+              containerPort: 5433
         - name: controller
           image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
           env:

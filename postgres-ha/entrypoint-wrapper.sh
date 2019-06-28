@@ -24,6 +24,7 @@ if [ "$(get_role)" == "Replica" ]; then
     export PGPASSWORD=${REPLICATION_PASSWORD}
     pg_basebackup -h ${POSTGRES_MASTER} -U replication -D ${PGDATA} -PRv
     echo "trigger_file = '${PROMOTE_TRIGGER_FILE}'" >> ${PGDATA}/recovery.conf
+    echo "recovery_target_timeline = 'latest'" >> ${PGDATA}/recovery.conf
 fi
 
 exec docker-entrypoint.sh postgres

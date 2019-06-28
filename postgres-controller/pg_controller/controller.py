@@ -60,7 +60,7 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
            "subsets": [
               {
                  "addresses": [{"ip": self._pod_ip}],
-                 "ports": [{"port": 5432}]
+                 "ports": [{"port": 5433}]
               }
            ]
         }
