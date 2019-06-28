@@ -19,3 +19,4 @@ postgres:
   superuserName: postgres
   superuserPassword: su123
   replicationPassword: rep123
+  masterService: postgres-master

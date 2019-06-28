@@ -13,6 +13,7 @@ spec:
       labels:
         app: postgres
     spec:
+      serviceAccountName: postgres
       volumes:
         - name: shared
           emptyDir: {}
@@ -39,26 +40,37 @@ spec:
                 secretKeyRef:
                   name: db-passwords
                   key: replication
+            - name: POSTGRES_MASTER
+              value: {{ .Values.postgres.masterService }}
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
             - name: PROMOTE_TRIGGER_FILE
               value: /shared/promote
+          ports:
+            - name: tcp
+              containerPort: 5432
           livenessProbe:
             exec:
               command: ["/liveness-probe.sh"]
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             failureThreshold: 1
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
           args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
         - name: controller
           image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef: 
+                  fieldPath: status.podIP
           args: 
             - --time-step=10
             - --management-port=80
             - --health-check-db={{ .Values.postgres.dbName }}
             - --health-check-db-user=monitoring
             - --promote-trigger-file=/shared/promote
+            - --pod-ip=$(POD_IP)
           volumeMounts:
             - name: shared
               mountPath: /shared

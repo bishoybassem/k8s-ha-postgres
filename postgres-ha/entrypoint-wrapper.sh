@@ -22,7 +22,7 @@ done
 if [ "$(get_role)" == "Replica" ]; then
     echo "Starting as a replica..."
     export PGPASSWORD=${REPLICATION_PASSWORD}
-    pg_basebackup -h postgres -U replication -D ${PGDATA} -PRv
+    pg_basebackup -h ${POSTGRES_MASTER} -U replication -D ${PGDATA} -PRv
     echo "trigger_file = '${PROMOTE_TRIGGER_FILE}'" >> ${PGDATA}/recovery.conf
 fi
 

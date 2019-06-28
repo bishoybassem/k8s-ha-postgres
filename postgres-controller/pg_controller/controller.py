@@ -4,6 +4,7 @@ import logging
 import argparse
 import threading
 import signal
+from kubernetes import client, config
 from pg_controller import state
 from pg_controller.workers.election import Election, ElectionStatusHandler
 from pg_controller.workers.health_monitor import HealthMonitor, HealthCheck
@@ -27,6 +28,7 @@ class PostgresHealthCheck(HealthCheck):
             if state.INSTANCE.initializing:
                 logging.info("Postgres is still initializing!")
             else:
+                state.INSTANCE.did_fail()
                 logging.exception("Postgres is not healthy!")
 
             return state.INSTANCE.initializing
@@ -34,18 +36,35 @@ class PostgresHealthCheck(HealthCheck):
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def __init__(self, promote_trigger_file):
+    def __init__(self, promote_trigger_file, pod_ip):
         self._promote_trigger_file = promote_trigger_file
+        self._pod_ip = pod_ip
+
+        config.load_incluster_config()
+        self._current_namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
 
     def handle_status(self, is_leader):
         state.INSTANCE.role = state.ROLE_MASTER if is_leader else state.ROLE_REPLICA
 
         if is_leader:
+            self._update_master_endpoint()
             logging.info("Creating trigger file for master promotion!")
             open(self._promote_trigger_file, "w").close()
 
         continue_trying = not is_leader
         return continue_trying
+
+    def _update_master_endpoint(self):
+        api_instance = client.CoreV1Api()
+        body = {
+           "subsets": [
+              {
+                 "addresses": [{"ip": self._pod_ip}],
+                 "ports": [{"port": 5432}]
+              }
+           ]
+        }
+        api_instance.patch_namespaced_endpoints("postgres-master", self._current_namespace, body)
 
 
 HEALTH_CHECK_NAME = "postgresAlive"
@@ -65,6 +84,8 @@ def get_args():
                         help='The user to use for the test connection to postgres')
     parser.add_argument('--promote-trigger-file',
                         help='The file that triggers replica to master promotion')
+    parser.add_argument('--pod-ip',
+                        help='')
 
     return parser.parse_args()
 
@@ -80,7 +101,7 @@ def start_health_monitor(args):
 def start_election(args):
     election = Election("service/postgres/master",
                         ["serfHealth", HEALTH_CHECK_NAME],
-                        PostgresMasterElectionStatusHandler(args.promote_trigger_file),
+                        PostgresMasterElectionStatusHandler(args.promote_trigger_file, args.pod_ip),
                         args.time_step)
     election.start()
     worker_threads.append(election)
@@ -92,7 +113,7 @@ def start_management_server(args):
     worker_threads.append(management_server)
 
 
-def stop(signum, frame):
+def stop(*args):
     for worker_thread in worker_threads:
         worker_thread.stop()
         if worker_thread.is_alive():
@@ -107,6 +128,11 @@ def start():
 
     threading.current_thread().name = "Controller"
     args = get_args()
-    start_health_monitor(args)
-    start_election(args)
-    start_management_server(args)
+
+    try:
+        start_health_monitor(args)
+        start_election(args)
+        start_management_server(args)
+    except:
+        logging.exception("An exception was encountered during startup!")
+        stop()

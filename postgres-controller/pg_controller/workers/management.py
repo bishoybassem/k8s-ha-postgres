@@ -8,7 +8,7 @@ class ManagementRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/controller/ready":
-            response_code = 503 if state.INSTANCE.initializing else 200
+            response_code = 200 if state.INSTANCE.is_ready else 503
             self._respond(response_code, not state.INSTANCE.initializing)
         elif self.path == "/controller/role":
             self._respond(200, state.INSTANCE.role)
