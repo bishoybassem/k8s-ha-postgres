@@ -1,10 +1,13 @@
+import threading
+
 
 class State:
 
     def __init__(self):
         self._role = None
-        self._initializing = True
-        self._failed = False
+        self._healthy = threading.Event()
+        self._initialized = False
+        self._failed_after_initialized = False
 
     @property
     def role(self):
@@ -15,18 +18,27 @@ class State:
         self._role = role
 
     @property
-    def initializing(self):
-        return self._initializing
+    def healthy(self):
+        return self._healthy.is_set()
+
+    @healthy.setter
+    def healthy(self, healthy):
+        if healthy:
+            self._healthy.set()
+        else:
+            self._healthy.clear()
+            if self._initialized:
+                self._failed_after_initialized = True
+
+    def wait_till_healthy(self):
+        self._healthy.wait()
 
     def done_initializing(self):
-        self._initializing = False
-
-    def did_fail(self):
-        self._failed = True
+        self._initialized = True
 
     @property
     def is_ready(self):
-        return not (self._initializing or self._failed)
+        return self._initialized and self.healthy and not self._failed_after_initialized
 
 
 ROLE_MASTER = "Master"

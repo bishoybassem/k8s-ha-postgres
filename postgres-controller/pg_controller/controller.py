@@ -4,6 +4,7 @@ import logging
 import argparse
 import threading
 import signal
+import requests
 from kubernetes import client, config
 from pg_controller import state
 from pg_controller.workers.election import Election, ElectionStatusHandler
@@ -21,23 +22,20 @@ class PostgresHealthCheck(HealthCheck):
         try:
             conn = psycopg2.connect(database=self._db, user=self._db_user, host="localhost", connect_timeout=1)
             conn.cursor().execute("SELECT 1")
-            state.INSTANCE.done_initializing()
+            state.INSTANCE.healthy = True
             logging.info("Postgres is healthy!")
-            return True
         except psycopg2.Error:
-            if state.INSTANCE.initializing:
-                logging.info("Postgres is still initializing!")
-            else:
-                state.INSTANCE.did_fail()
-                logging.exception("Postgres is not healthy!")
+            state.INSTANCE.healthy = False
+            logging.exception("Postgres is not healthy!")
 
-            return state.INSTANCE.initializing
+        return state.INSTANCE.healthy
 
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def __init__(self, promote_trigger_file, pod_ip):
+    def __init__(self, promote_trigger_file, master_service, pod_ip):
         self._promote_trigger_file = promote_trigger_file
+        self._master_service = master_service
         self._pod_ip = pod_ip
 
         config.load_incluster_config()
@@ -55,6 +53,7 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
         return continue_trying
 
     def _update_master_endpoint(self):
+        logging.info("Updating k8s master service to point to %s!" % self._pod_ip)
         api_instance = client.CoreV1Api()
         body = {
            "subsets": [
@@ -64,10 +63,11 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
               }
            ]
         }
-        api_instance.patch_namespaced_endpoints("postgres-master", self._current_namespace, body)
+        api_instance.patch_namespaced_endpoints(self._master_service, self._current_namespace, body)
 
 
 HEALTH_CHECK_NAME = "postgresAlive"
+ELECTION_CONSUL_KEY = "service/postgres/master"
 worker_threads = []
 
 
@@ -84,10 +84,22 @@ def get_args():
                         help='The user to use for the test connection to postgres')
     parser.add_argument('--promote-trigger-file',
                         help='The file that triggers replica to master promotion')
+    parser.add_argument('--master-service',
+                        help='The name of the k8s service pointing to the current master')
     parser.add_argument('--pod-ip',
-                        help='')
+                        help='The ip of this pod')
 
     return parser.parse_args()
+
+
+def set_initial_role():
+    response = requests.get(Election.CONSUL_KV_URL.format(ELECTION_CONSUL_KEY))
+    if response.status_code == 404:
+        state.INSTANCE.role = state.ROLE_MASTER
+    elif response.status_code == 200:
+        state.INSTANCE.role = state.ROLE_REPLICA
+    else:
+        response.raise_for_status()
 
 
 def start_health_monitor(args):
@@ -99,9 +111,12 @@ def start_health_monitor(args):
 
 
 def start_election(args):
-    election = Election("service/postgres/master",
+    state.INSTANCE.wait_till_healthy()
+
+    election = Election(ELECTION_CONSUL_KEY,
                         ["serfHealth", HEALTH_CHECK_NAME],
-                        PostgresMasterElectionStatusHandler(args.promote_trigger_file, args.pod_ip),
+                        PostgresMasterElectionStatusHandler(args.promote_trigger_file,
+                                                            args.master_service, args.pod_ip),
                         args.time_step)
     election.start()
     worker_threads.append(election)
@@ -130,9 +145,11 @@ def start():
     args = get_args()
 
     try:
+        start_management_server(args)
+        set_initial_role()
         start_health_monitor(args)
         start_election(args)
-        start_management_server(args)
+        state.INSTANCE.done_initializing()
     except:
         logging.exception("An exception was encountered during startup!")
         stop()

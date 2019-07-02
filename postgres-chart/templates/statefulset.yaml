@@ -78,6 +78,7 @@ spec:
             - --health-check-db={{ .Values.postgres.dbName }}
             - --health-check-db-user=monitoring
             - --promote-trigger-file=/shared/promote
+            - --master-service={{ .Values.postgres.masterService }}
             - --pod-ip=$(POD_IP)
           volumeMounts:
             - name: shared

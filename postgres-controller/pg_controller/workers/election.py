@@ -18,9 +18,9 @@ class Election(looping_thread.LoopingThread):
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
-    def __init__(self, consul_election_key, consul_session_checks, election_status_handler, time_step_seconds):
+    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, time_step_seconds):
         super().__init__()
-        self._consul_election_key = consul_election_key
+        self._election_consul_key = election_consul_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
         self._time_step_seconds = time_step_seconds
@@ -37,7 +37,7 @@ class Election(looping_thread.LoopingThread):
 
     def _acquire_lock(self):
         logging.info("Attempting to acquire lock over election key")
-        response = requests.put(self.__class__.CONSUL_KV_URL.format(self._consul_election_key),
+        response = requests.put(self.__class__.CONSUL_KV_URL.format(self._election_consul_key),
                                 params={"acquire": self._session_id},
                                 json={"Name": socket.gethostname()})
 
