@@ -7,7 +7,6 @@ class State:
         self._role = None
         self._healthy = threading.Event()
         self._initialized = False
-        self._failed_after_initialized = False
 
     @property
     def role(self):
@@ -27,8 +26,8 @@ class State:
             self._healthy.set()
         else:
             self._healthy.clear()
-            if self._initialized:
-                self._failed_after_initialized = True
+            if self._initialized and self._role == ROLE_MASTER:
+                self._role = ROLE_DEAD_MASTER
 
     def wait_till_healthy(self):
         self._healthy.wait()
@@ -38,9 +37,13 @@ class State:
 
     @property
     def is_ready(self):
-        return self._initialized and self.healthy and not self._failed_after_initialized
+        if self._role == ROLE_DEAD_MASTER:
+            return False
+
+        return self._initialized and self.healthy
 
 
 ROLE_MASTER = "Master"
 ROLE_REPLICA = "Replica"
+ROLE_DEAD_MASTER = "DeadMaster"
 INSTANCE = State()

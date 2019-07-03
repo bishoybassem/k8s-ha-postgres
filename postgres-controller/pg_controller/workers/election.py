@@ -24,7 +24,7 @@ class Election(looping_thread.LoopingThread):
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
         self._time_step_seconds = time_step_seconds
-        self._session_id = self._create_consul_session()
+        self._create_consul_session()
 
     def _create_consul_session(self):
         logging.info("Creating Consul session for leader election")
@@ -33,7 +33,8 @@ class Election(looping_thread.LoopingThread):
 
         logging.info("Response (%d) %s" % (response.status_code, response.text))
         response.raise_for_status()
-        return response.json()["ID"]
+        
+        self._session_id = response.json()["ID"]
 
     def _acquire_lock(self):
         logging.info("Attempting to acquire lock over election key")
@@ -42,13 +43,21 @@ class Election(looping_thread.LoopingThread):
                                 json={"Name": socket.gethostname()})
 
         logging.info("Response (%d) %s" % (response.status_code, response.text))
-        response.raise_for_status()
+        if response.status_code == 500 and "invalid session" in response.text:
+            self._create_consul_session()
+        else:
+            response.raise_for_status()
+
         return response.text == "true"
 
     def do_one_run(self):
-        is_leader = self._acquire_lock()
-        continue_trying = self._election_status_handler.handle_status(is_leader)
-        if not continue_trying:
-            logging.info("Status handler decided to stop the election loop!")
-            self.stop()
+        try:
+            is_leader = self._acquire_lock()
+            continue_trying = self._election_status_handler.handle_status(is_leader)
+            if not continue_trying:
+                logging.info("Status handler decided to stop the election loop!")
+                self.stop()
+        except:
+            logging.exception("An error occurred during leader election!")
+
         self.wait(self._time_step_seconds)

@@ -22,13 +22,17 @@ class PostgresHealthCheck(HealthCheck):
         try:
             conn = psycopg2.connect(database=self._db, user=self._db_user, host="localhost", connect_timeout=1)
             conn.cursor().execute("SELECT 1")
-            state.INSTANCE.healthy = True
             logging.info("Postgres is healthy!")
+            return True
         except psycopg2.Error:
-            state.INSTANCE.healthy = False
             logging.exception("Postgres is not healthy!")
+            return False
 
-        return state.INSTANCE.healthy
+    def check_updated(self, is_healthy):
+        state.INSTANCE.healthy = is_healthy
+
+    def check_update_failed(self):
+        state.INSTANCE.healthy = False
 
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):

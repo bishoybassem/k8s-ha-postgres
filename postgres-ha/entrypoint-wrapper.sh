@@ -19,7 +19,7 @@ until role_decided; do
     sleep 5s
 done
 
-if [ "$(get_role)" == "Replica" ]; then
+if [ "$(get_role)" == "Replica" ] && [ ! -f ${PGDATA}/recovery.conf ]; then
     echo "Starting as a replica..."
     export PGPASSWORD=${REPLICATION_PASSWORD}
     pg_basebackup -h ${POSTGRES_MASTER} -U replication -D ${PGDATA} -PRv
