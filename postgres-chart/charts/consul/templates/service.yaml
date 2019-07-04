@@ -1,7 +1,7 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: consul
+  name: {{ .Values.serverService }}
 spec:
   clusterIP: None
   selector:

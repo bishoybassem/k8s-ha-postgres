@@ -3,7 +3,9 @@ apiVersion: apps/v1
 metadata:
   name: postgres
 spec: 
-  replicas: {{ .Values.clusterSize }}
+  replicas: {{ .Values.postgres.clusterSize }}
+  updateStrategy:
+    type: OnDelete
   selector: 
     matchLabels:
       app: postgres
@@ -14,6 +16,16 @@ spec:
         app: postgres
     spec:
       serviceAccountName: postgres
+      initContainers:
+        - name: wait-consul-cluster
+          image: alpine:latest
+          command:
+            - sh
+            - -cx
+            - |
+              while [ $(nslookup {{ .Values.consul.serverService }} 2> /dev/null | grep -c "Address [0-9]:") -ne {{ .Values.consul.clusterSize }} ]; do
+                sleep 3s
+              done 
       volumes:
         - name: shared
           emptyDir: {}
@@ -56,7 +68,7 @@ spec:
             failureThreshold: 1
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
-          args: ["agent", "-retry-join", {{ .Values.consul.serverHostName | quote }}]
+          args: ["agent", "-retry-join", {{ .Values.consul.serverService | quote }}]
         - name: haproxy
           image: {{ .Values.haproxy.image.name }}:{{ .Values.haproxy.image.tag }}
           volumeMounts:

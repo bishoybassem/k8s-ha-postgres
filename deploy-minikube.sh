@@ -6,7 +6,9 @@ docker build -t postgres-ha:11.3 postgres-ha/
 helm uninstall postgres;
 
 kubectl wait --for=delete pod -l app=postgres
-kubectl exec -it consul-0 -- consul kv delete service/postgres/master
-kubectl delete pvc postgres-data-postgres-0 postgres-data-postgres-1 postgres-data-postgres-2
+kubectl delete pvc -l app=postgres
+
+kubectl wait --for=delete pod -l app=consul
+kubectl delete pvc -l app=consul
 
 helm install postgres postgres-chart/

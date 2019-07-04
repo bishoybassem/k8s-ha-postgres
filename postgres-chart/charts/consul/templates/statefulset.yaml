@@ -16,7 +16,7 @@ spec:
       containers:
         - name: main
           image: {{ .Values.image.name }}:{{ .Values.image.tag }}
-          args: ['agent', '-server', '-retry-join=consul', '-bootstrap-expect={{ .Values.clusterSize }}']
+          args: ['agent', '-server', '-retry-join={{ .Values.serverService }}', '-bootstrap-expect={{ .Values.clusterSize }}']
           volumeMounts:
             - name: data
               mountPath: /consul/data
