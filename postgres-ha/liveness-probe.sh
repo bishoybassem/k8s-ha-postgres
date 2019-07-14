@@ -1,7 +1,5 @@
 #!/bin/bash -e
 
-if [ -n "$(pgrep pg_basebackup)" ]; then
-	exit 0
+if [ -f init_completed ]; then
+	pg_isready -U monitoring -d ${POSTGRES_DB}
 fi
-
-pg_isready -U monitoring -d ${POSTGRES_DB}

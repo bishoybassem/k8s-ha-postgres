@@ -27,4 +27,6 @@ if [ "$(get_role)" == "Replica" ] && [ ! -f ${PGDATA}/recovery.conf ]; then
     echo "recovery_target_timeline = 'latest'" >> ${PGDATA}/recovery.conf
 fi
 
+touch init_completed
+
 exec docker-entrypoint.sh postgres
