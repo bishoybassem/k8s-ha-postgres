@@ -1,21 +1,21 @@
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: postgres
+  name: ha-postgres
 spec: 
   replicas: {{ .Values.postgres.clusterSize }}
   updateStrategy:
     type: OnDelete
   selector: 
     matchLabels:
-      app: postgres
+      app: ha-postgres
   serviceName: postgres
   template:
     metadata:
       labels:
-        app: postgres
+        app: ha-postgres
     spec:
-      serviceAccountName: postgres
+      serviceAccountName: ha-postgres
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -24,7 +24,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
                 labelSelector:
                   matchLabels:
-                    app: postgres
+                    app: ha-postgres
       initContainers:
         - name: wait-consul-cluster
           image: alpine:latest

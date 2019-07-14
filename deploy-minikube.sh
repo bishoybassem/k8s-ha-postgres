@@ -1,14 +1,14 @@
 #!/bin/bash
 
-docker build -t postgres-controller:1.0.0 postgres-controller/
-docker build -t postgres-ha:11.3 postgres-ha/
+docker build -t ha-postgres-controller:1.0.0 ha-postgres-controller/
+docker build -t ha-postgres:11.3 ha-postgres/
 
-helm uninstall postgres;
+helm uninstall ha-postgres;
 
-kubectl wait --for=delete pod -l app=postgres
-kubectl delete pvc -l app=postgres
+kubectl wait --for=delete pod -l app=ha-postgres
+kubectl delete pvc -l app=ha-postgres
 
 kubectl wait --for=delete pod -l app=consul
 kubectl delete pvc -l app=consul
 
-helm install postgres postgres-chart/
+helm install ha-postgres chart/

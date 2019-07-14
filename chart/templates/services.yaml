@@ -5,7 +5,7 @@ metadata:
 spec:
   clusterIP: None
   selector:
-    app: postgres
+    app: ha-postgres
 ---
 kind: Service
 apiVersion: v1
@@ -20,4 +20,4 @@ spec:
 kind: Endpoints
 apiVersion: v1
 metadata:
-  name: postgres-master
+  name: {{ .Values.postgres.masterService }}

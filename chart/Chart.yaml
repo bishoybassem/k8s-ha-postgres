@@ -1,0 +1,4 @@
+name: ha-postgres
+version: 1.0.0
+appVersion: 11.3
+description: Installs a highly available PostgreSQL cluster

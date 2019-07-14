@@ -9,14 +9,14 @@ consul:
 
 controller:
   image:
-    name: postgres-controller
+    name: ha-postgres-controller
     tag: 1.0.0
 
 postgres:
   clusterSize: 3
   storageClassName:
   image:
-    name: postgres-ha
+    name: ha-postgres
     tag: 11.3
   dbName: postgres
   superuserName: postgres
