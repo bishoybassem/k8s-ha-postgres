@@ -118,7 +118,7 @@ def start_election(args):
     state.INSTANCE.wait_till_healthy()
 
     election = Election(ELECTION_CONSUL_KEY,
-                        ["serfHealth", HEALTH_CHECK_NAME],
+                        [HEALTH_CHECK_NAME],
                         PostgresMasterElectionStatusHandler(args.promote_trigger_file,
                                                             args.master_service, args.pod_ip),
                         args.time_step)

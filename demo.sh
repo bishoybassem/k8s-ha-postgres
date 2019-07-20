@@ -30,7 +30,7 @@ function db_stats() {
 		role=master
 		in_recovery=$(kubectl exec -it ha-postgres-$i -c postgres -- psql -Atc "SELECT pg_is_in_recovery();" -U postgres 2>&1)
 		if [ "${in_recovery%?}" == "t" ]; then
-			role=replica
+			role=standby
 		fi 
 		echo "\tha-postgres-$i: ${record_count%?} records -> ${role}"
 	done
