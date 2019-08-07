@@ -2,6 +2,7 @@
 consul:
   clusterSize: 3
   storageClassName:
+  pvSize: 100Mi
   image:
     name: consul
     tag: 1.5.0
@@ -15,6 +16,7 @@ controller:
 postgres:
   clusterSize: 3
   storageClassName:
+  pvSize: 1Gi
   image:
     name: ha-postgres
     tag: 11.3

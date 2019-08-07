@@ -44,7 +44,7 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 100Mi
+            storage: {{ .Values.pvSize }}
         {{- if .Values.storageClassName }}
         {{- if eq "-" .Values.storageClassName }}
         storageClassName: ""

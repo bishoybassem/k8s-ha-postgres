@@ -7,15 +7,18 @@ This project serves as a proof of concept for a highly available PostgreSQL setu
 The setup features the following:
 * A cluster with two db pods at least (StatefulSet), one acting as master and the rest as standbys (streaming replication).
 * Which pod gets to be master is based on leader election implemented using Consul. ([guide](https://learn.hashicorp.com/consul/developer-configuration/elections))
-* An HAProxy sidecar container listening for client connections, and proxies them to the db container within the same pod.
 * Automatic failover in case the master db's health checks fail. 
 * A ClusterIP service always pointing to the current master, to be used for writing/replication by clients/standbys.
 * A headless service returning the list of healthy db pods, to be used by clients for reading.
-* A Contoller sidecar container that orchestrates the behaviour/components mentioned above. 
 
 ## Implementation
+The database pod consists of the following containers:
+* __postgres__: the PostgreSQL database process.
+* __haproxy__: listens for client connections, and proxies them to the db container within the same pod.
+* __consul__: the Consul agent running in client mode. 
+* __controller__: a multithreaded process written in Python that orchestrates the whole workflow. 
 
-A bit more into details, the Contoller process is a multithreaded one written in Python, with the following responsibilities:
+The __controller__ process is the one that drives the cluster to be highly available, it maintains the state within each database pod, and controls its components accordingly. The __controller__ has the following responsibilities:
 * Executes the health check for db, and updates Consul's check accordingly. In case it fails, Consul would then release the leadership lock, allowing any standby pod to take over the master/leader role.
 * Monitors election status and constantly tries to acquire the leadership lock. If aquired, it promotes the standby to master via `trigger_file` and updates the master's ClusterIP service to point to its pod. 
 * Exposes the health status via an HTTP endpoint `/controller/ready`, that is used by:
