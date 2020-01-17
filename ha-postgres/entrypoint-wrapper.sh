@@ -29,4 +29,5 @@ fi
 
 touch init_completed
 
+mv /master-init.sh /docker-entrypoint-initdb.d
 exec docker-entrypoint.sh postgres

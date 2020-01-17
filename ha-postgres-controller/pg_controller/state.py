@@ -32,6 +32,10 @@ class State:
     def wait_till_healthy(self):
         self._healthy.wait()
 
+    @property
+    def initialized(self):
+        return self._initialized
+
     def done_initializing(self):
         self._initialized = True
 

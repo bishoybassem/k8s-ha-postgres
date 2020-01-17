@@ -12,27 +12,42 @@ from pg_controller.workers.health_monitor import HealthMonitor, HealthCheck
 from pg_controller.workers.management import ManagementServer
 
 
-class PostgresHealthCheck(HealthCheck):
+class PgBouncerHealthCheck(HealthCheck):
 
-    def __init__(self, db, db_user):
+    def __init__(self, db, db_user, pgbouncer_admin_user):
         self._db = db
         self._db_user = db_user
+        self._pgbouncer_admin_user = pgbouncer_admin_user
 
     def do_health_check(self):
         try:
-            conn = psycopg2.connect(database=self._db, user=self._db_user, host="localhost", connect_timeout=1)
+            conn = psycopg2.connect(database=self._db, user=self._db_user, host="localhost", port=6432,
+                                    connect_timeout=1)
             conn.cursor().execute("SELECT 1")
-            logging.info("Postgres is healthy!")
+            logging.info("PgBouncer/Postgres is healthy!")
             return True
         except psycopg2.Error:
-            logging.exception("Postgres is not healthy!")
-            return False
+            logging.exception("PgBouncer/Postgres is not healthy!")
+
+        if state.INSTANCE.initialized:
+            self._kill_db_connections()
+
+        return False
 
     def check_updated(self, is_healthy):
         state.INSTANCE.healthy = is_healthy
 
     def check_update_failed(self):
         state.INSTANCE.healthy = False
+
+    def _kill_db_connections(self):
+        try:
+            conn = psycopg2.connect(database="pgbouncer", user=self._pgbouncer_admin_user, host="localhost", port=6432)
+            conn.autocommit = True
+            conn.cursor().execute("KILL " + self._db)
+            logging.info("Db connections were killed!")
+        except psycopg2.Error:
+            logging.exception("An error occurred while trying to kill the db connections!")
 
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
@@ -63,7 +78,10 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
            "subsets": [
               {
                  "addresses": [{"ip": self._pod_ip}],
-                 "ports": [{"port": 5433}]
+                 "ports": [
+                    {"name": "pgbouncer", "port": 6432}, 
+                    {"name": "postgres", "port": 5432}
+                 ]
               }
            ]
         }
@@ -76,16 +94,18 @@ worker_threads = []
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Controller daemon for postgres')
+    parser = argparse.ArgumentParser(description='Controller daemon for ha-postgres')
     parser.add_argument('--time-step', type=int,
                         help='The period (in seconds) to wait between checks/updates for health monitoring and '
                              'leader election')
     parser.add_argument('--management-port', type=int, default=80,
                         help='The port on which the controller exposes the management API')
     parser.add_argument('--health-check-db',
-                        help='The name of the database to use for the test connection to postgres')
+                        help='The name of the database to use for the test connection to pgbouncer')
     parser.add_argument('--health-check-db-user',
-                        help='The user to use for the test connection to postgres')
+                        help='The user to use for the test connection to pgbouncer')
+    parser.add_argument('--pgbouncer-admin-user',
+                        help='The pgbouncer user to use to kill the db connections in case of failure.')
     parser.add_argument('--promote-trigger-file',
                         help='The file that triggers replica to master promotion')
     parser.add_argument('--master-service',
@@ -107,16 +127,13 @@ def set_initial_role():
 
 
 def start_health_monitor(args):
-    health_monitor = HealthMonitor(HEALTH_CHECK_NAME,
-                                   PostgresHealthCheck(args.health_check_db, args.health_check_db_user),
-                                   args.time_step)
+    health_check = PgBouncerHealthCheck(args.health_check_db, args.health_check_db_user, args.pgbouncer_admin_user)
+    health_monitor = HealthMonitor(HEALTH_CHECK_NAME, health_check, args.time_step)
     health_monitor.start()
     worker_threads.append(health_monitor)
 
 
 def start_election(args):
-    state.INSTANCE.wait_till_healthy()
-
     election = Election(ELECTION_CONSUL_KEY,
                         [HEALTH_CHECK_NAME],
                         PostgresMasterElectionStatusHandler(args.promote_trigger_file,
@@ -152,6 +169,7 @@ def start():
         start_management_server(args)
         set_initial_role()
         start_health_monitor(args)
+        state.INSTANCE.wait_till_healthy()
         start_election(args)
         state.INSTANCE.done_initializing()
     except:

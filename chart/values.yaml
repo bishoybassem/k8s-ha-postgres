@@ -26,7 +26,7 @@ postgres:
   replicationPassword: rep123
   masterService: postgres-master
 
-haproxy:
+pgbouncer:
   image: 
-    name: haproxy
-    tag: 2.0.0
+    name: ha-pgbouncer
+    tag: 1.12.0

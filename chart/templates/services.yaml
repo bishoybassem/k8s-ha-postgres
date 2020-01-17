@@ -14,8 +14,10 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 5432
-      targetPort: tcp
+    - name: pgbouncer
+      port: 6432
+    - name: postgres
+      port: 5432
 ---
 kind: Endpoints
 apiVersion: v1

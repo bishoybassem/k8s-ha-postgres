@@ -15,6 +15,7 @@ echo "Master db service ip $master_service_ip"
 export PGHOST=${master_service_ip}
 export PGUSER=postgres
 export PGPASSWORD=su123
+export PGPORT=6432
 
 echo "Creating test table ..."
 psql -qc "create table if not exists test(id serial, data text)"
@@ -22,13 +23,13 @@ psql -qc "create table if not exists test(id serial, data text)"
 function db_stats() {
 	db_count=$(kubectl get statefulset ha-postgres -o jsonpath='{.status.replicas}')
 	for i in $(seq 0 $(( db_count - 1 ))); do
-		record_count=$(kubectl exec -it ha-postgres-$i -c postgres -- psql -Atc "select count(*) from test" -U postgres 2>&1)
+		record_count=$(kubectl exec -it ha-postgres-$i -c postgres -- psql -Atc "select count(*) from test" -h localhost -p 6432 -U postgres 2>&1)
 		if [ $? -ne 0 ]; then
 			echo "\tha-postgres-$i: down"
 			continue
 		fi
 		role=master
-		in_recovery=$(kubectl exec -it ha-postgres-$i -c postgres -- psql -Atc "SELECT pg_is_in_recovery();" -U postgres 2>&1)
+		in_recovery=$(kubectl exec -it ha-postgres-$i -c postgres -- psql -Atc "SELECT pg_is_in_recovery();" -h localhost -p 6432 -U postgres 2>&1)
 		if [ "${in_recovery%?}" == "t" ]; then
 			role=standby
 		fi 
