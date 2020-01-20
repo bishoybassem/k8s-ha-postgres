@@ -5,7 +5,7 @@ metadata:
 data:
   haproxy.cfg: |
     listen postgres
-        bind *:5433
+        bind *:{{ .Values.postgres.dbPort }}
         mode tcp
         option httpchk GET /controller/ready HTTP/1.1
         server postgres 127.0.0.1:5432 check port 80 fall 1 rise 1 inter 5s on-marked-down shutdown-sessions

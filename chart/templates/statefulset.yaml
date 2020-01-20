@@ -27,7 +27,7 @@ spec:
                     app: ha-postgres
       initContainers:
         - name: wait-consul-cluster
-          image: alpine:latest
+          image: alpine:3.10
           command:
             - sh
             - -cx
@@ -54,27 +54,17 @@ spec:
               value: {{ .Values.postgres.dbName }}
             - name: POSTGRES_USER
               value: {{ .Values.postgres.superuserName }}
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-passwords
-                  key: superuser
-            - name: REPLICATION_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-passwords
-                  key: replication
-            - name: POSTGRES_MASTER
+            - name: POSTGRES_MASTER_HOST
               value: {{ .Values.postgres.masterService }}
+            - name: POSTGRES_MASTER_PORT
+              value: {{ .Values.postgres.dbPort | quote }}
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
             - name: PROMOTE_TRIGGER_FILE
               value: /shared/promote
-          livenessProbe:
-            exec:
-              command: ["/liveness-probe.sh"]
-            initialDelaySeconds: 30
-            failureThreshold: 1
+          envFrom:
+            - secretRef:
+                name: db-passwords
         - name: consul
           image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
           args: ["agent", "-retry-join", {{ .Values.consul.serverService | quote }}]
@@ -85,7 +75,7 @@ spec:
               mountPath: /usr/local/etc/haproxy
           ports:
             - name: tcp
-              containerPort: 5433
+              containerPort: {{ .Values.postgres.dbPort }}
         - name: controller
           image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
           env:
@@ -93,14 +83,20 @@ spec:
               valueFrom:
                 fieldRef: 
                   fieldPath: status.podIP
+            - name: PGDATABASE 
+              value: {{ .Values.postgres.dbName }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-passwords
+                  key: CONTROLLER_USER_PASSWORD
           args: 
             - --time-step=10
             - --management-port=80
-            - --health-check-db={{ .Values.postgres.dbName }}
-            - --health-check-db-user=monitoring
             - --promote-trigger-file=/shared/promote
             - --master-service={{ .Values.postgres.masterService }}
             - --pod-ip=$(POD_IP)
+            - --db-port={{ .Values.postgres.dbPort }}
           volumeMounts:
             - name: shared
               mountPath: /shared

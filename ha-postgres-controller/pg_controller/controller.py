@@ -14,13 +14,12 @@ from pg_controller.workers.management import ManagementServer
 
 class PostgresHealthCheck(HealthCheck):
 
-    def __init__(self, db, db_user):
-        self._db = db
-        self._db_user = db_user
+    def __init__(self):
+        pass
 
     def do_health_check(self):
         try:
-            conn = psycopg2.connect(database=self._db, user=self._db_user, host="localhost", connect_timeout=1)
+            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=1)
             conn.cursor().execute("SELECT 1")
             logging.info("Postgres is healthy!")
             return True
@@ -37,10 +36,11 @@ class PostgresHealthCheck(HealthCheck):
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def __init__(self, promote_trigger_file, master_service, pod_ip):
+    def __init__(self, promote_trigger_file, master_service, pod_ip, db_port):
         self._promote_trigger_file = promote_trigger_file
         self._master_service = master_service
         self._pod_ip = pod_ip
+        self._db_port = db_port
 
         config.load_incluster_config()
         self._current_namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
@@ -63,7 +63,7 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
            "subsets": [
               {
                  "addresses": [{"ip": self._pod_ip}],
-                 "ports": [{"port": 5433}]
+                 "ports": [{"port": int(self._db_port)}]
               }
            ]
         }
@@ -76,22 +76,20 @@ worker_threads = []
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description='Controller daemon for postgres')
+    parser = argparse.ArgumentParser(description='Controller daemon for ha-postgres')
     parser.add_argument('--time-step', type=int,
                         help='The period (in seconds) to wait between checks/updates for health monitoring and '
                              'leader election')
     parser.add_argument('--management-port', type=int, default=80,
                         help='The port on which the controller exposes the management API')
-    parser.add_argument('--health-check-db',
-                        help='The name of the database to use for the test connection to postgres')
-    parser.add_argument('--health-check-db-user',
-                        help='The user to use for the test connection to postgres')
     parser.add_argument('--promote-trigger-file',
                         help='The file that triggers replica to master promotion')
     parser.add_argument('--master-service',
                         help='The name of the k8s service pointing to the current master')
     parser.add_argument('--pod-ip',
                         help='The ip of this pod')
+    parser.add_argument('--db-port',
+                        help='The public port for the database that HAProxy listens to')
 
     return parser.parse_args()
 
@@ -108,20 +106,16 @@ def set_initial_role():
 
 def start_health_monitor(args):
     health_monitor = HealthMonitor(HEALTH_CHECK_NAME,
-                                   PostgresHealthCheck(args.health_check_db, args.health_check_db_user),
+                                   PostgresHealthCheck(),
                                    args.time_step)
     health_monitor.start()
     worker_threads.append(health_monitor)
 
 
 def start_election(args):
-    state.INSTANCE.wait_till_healthy()
-
-    election = Election(ELECTION_CONSUL_KEY,
-                        [HEALTH_CHECK_NAME],
-                        PostgresMasterElectionStatusHandler(args.promote_trigger_file,
-                                                            args.master_service, args.pod_ip),
-                        args.time_step)
+    handler = PostgresMasterElectionStatusHandler(args.promote_trigger_file, args.master_service,
+                                                  args.pod_ip, args.db_port)
+    election = Election(ELECTION_CONSUL_KEY, [HEALTH_CHECK_NAME], handler, args.time_step)
     election.start()
     worker_threads.append(election)
 
@@ -152,6 +146,7 @@ def start():
         start_management_server(args)
         set_initial_role()
         start_health_monitor(args)
+        state.INSTANCE.wait_till_healthy()
         start_election(args)
         state.INSTANCE.done_initializing()
     except:

@@ -21,9 +21,11 @@ postgres:
     name: ha-postgres
     tag: 11.3
   dbName: postgres
+  dbPort: 5433
   superuserName: postgres
   superuserPassword: su123
   replicationPassword: rep123
+  controllerPassword: con123  
   masterService: postgres-master
 
 haproxy:

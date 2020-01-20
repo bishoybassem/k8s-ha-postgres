@@ -13,4 +13,4 @@ kubectl delete pvc -l app=consul
 
 helm install ha-postgres chart/
 
-watch -t kubectl get pods
+watch -t kubectl get pods -o wide

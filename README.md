@@ -33,10 +33,10 @@ The __controller__ process is the one that drives the cluster to be highly avail
 ## Requirements
 
 To test the setup locally, the following needs to be present/installed:
-* Docker (used version 18.09.0-ce).
-* Minikube (used version 1.0.0, with `none` driver).
-* Kubernetes (used version 1.14.0).
-* Helm (used version 3.0.0-alpha.1).
+* Docker (used version 19.03.5-ce).
+* Minikube (used version 1.6.2, with `none` driver).
+* Kubernetes (used version 1.17.0).
+* Helm (used version 3.0.2).
 
 ## Steps
 
