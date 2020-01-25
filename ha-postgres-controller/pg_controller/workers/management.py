@@ -9,17 +9,20 @@ class ManagementRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/controller/ready":
             response_code = 200 if state.INSTANCE.is_ready else 503
-            self._respond(response_code, state.INSTANCE.is_ready)
+            self._respond(response_code)
         elif self.path == "/controller/role":
             self._respond(200, state.INSTANCE.role)
         else:
             self._respond(404, "Endpoint not found!")
 
-    def _respond(self, response_code, body):
+    def _respond(self, response_code, body=None):
         self.send_response(response_code)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(str(body).encode("utf-8"))
+        if body:
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(str(body).encode("utf-8"))
+        else:
+            self.end_headers()
 
     def log_message(self, msg_format, *args):
         logging.info(msg_format % args)

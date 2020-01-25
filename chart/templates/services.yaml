@@ -1,7 +1,7 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: postgres
+  name: {{ .Values.readService }}
 spec:
   clusterIP: None
   selector:
@@ -10,14 +10,14 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: {{ .Values.postgres.masterService }}
+  name: {{ .Values.masterService }}
 spec:
   type: ClusterIP
   ports:
-    - port: {{ .Values.postgres.dbPort }}
+    - port: {{ .Values.dbPort }}
       targetPort: tcp
 ---
 kind: Endpoints
 apiVersion: v1
 metadata:
-  name: {{ .Values.postgres.masterService }}
+  name: {{ .Values.masterService }}

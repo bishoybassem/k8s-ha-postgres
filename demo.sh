@@ -15,6 +15,7 @@ echo "Master db service ip $master_service_ip"
 export PGHOST=${master_service_ip}
 export PGUSER=postgres
 export PGPASSWORD=su123
+export PGDATABASE=postgres
 export PGPORT=5433
 echo "Creating test table ..."
 psql -qc "create table if not exists test(id serial, data text)"

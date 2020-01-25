@@ -3,7 +3,7 @@ apiVersion: apps/v1
 metadata:
   name: ha-postgres
 spec: 
-  replicas: {{ .Values.postgres.clusterSize }}
+  replicas: {{ .Values.clusterSize }}
   updateStrategy:
     type: OnDelete
   selector: 
@@ -27,14 +27,18 @@ spec:
                     app: ha-postgres
       initContainers:
         - name: wait-consul-cluster
-          image: alpine:3.10
+          image: {{ .Values.waitConsulCluster.image }}
           command:
             - sh
             - -cx
             - |
-              while [ $(nslookup {{ .Values.consul.serverService }} 2> /dev/null | grep -c "Address [0-9]:") -ne {{ .Values.consul.clusterSize }} ]; do
+              while [ $(nslookup {{ .Values.consul.server.service }} 2> /dev/null | grep -c "Address [0-9]:") -ne {{ .Values.consul.server.clusterSize }} ]; do
                 sleep 3s
               done 
+          resources:
+            limits:
+              cpu: {{ .Values.waitConsulCluster.limits.cpu }}
+              memory: {{ .Values.waitConsulCluster.limits.memory }}
       volumes:
         - name: shared
           emptyDir: {}
@@ -43,7 +47,7 @@ spec:
             name: haproxy-config
       containers:
         - name: postgres
-          image: {{ .Values.postgres.image.name }}:{{ .Values.postgres.image.tag }}
+          image: {{ .Values.postgres.image }}
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
@@ -51,13 +55,13 @@ spec:
               mountPath: /shared
           env:
             - name: POSTGRES_DB
-              value: {{ .Values.postgres.dbName }}
+              value: {{ .Values.dbName }}
             - name: POSTGRES_USER
-              value: {{ .Values.postgres.superuserName }}
+              value: {{ .Values.postgres.users.su.name }}
             - name: POSTGRES_MASTER_HOST
-              value: {{ .Values.postgres.masterService }}
+              value: {{ .Values.masterService }}
             - name: POSTGRES_MASTER_PORT
-              value: {{ .Values.postgres.dbPort | quote }}
+              value: {{ .Values.dbPort | quote }}
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
             - name: PROMOTE_TRIGGER_FILE
@@ -65,38 +69,50 @@ spec:
           envFrom:
             - secretRef:
                 name: db-passwords
+          resources:
+            limits:
+              cpu: {{ .Values.postgres.limits.cpu }}
+              memory: {{ .Values.postgres.limits.memory }}
         - name: consul
-          image: {{ .Values.consul.image.name }}:{{ .Values.consul.image.tag }}
-          args: ["agent", "-retry-join", {{ .Values.consul.serverService | quote }}]
+          image: {{ .Values.consul.image }}
+          args: ["agent", "-retry-join", {{ .Values.consul.server.service | quote }}]
+          resources:
+            limits:
+              cpu: {{ .Values.consul.client.limits.cpu }}
+              memory: {{ .Values.consul.client.limits.memory }}
         - name: haproxy
-          image: {{ .Values.haproxy.image.name }}:{{ .Values.haproxy.image.tag }}
+          image: {{ .Values.haproxy.image }}
           volumeMounts:
             - name: haproxy-config
               mountPath: /usr/local/etc/haproxy
           ports:
             - name: tcp
-              containerPort: {{ .Values.postgres.dbPort }}
+              containerPort: {{ .Values.dbPort }}
+          resources:
+            limits:
+              cpu: {{ .Values.haproxy.limits.cpu }}
+              memory: {{ .Values.haproxy.limits.memory }}
         - name: controller
-          image: {{ .Values.controller.image.name }}:{{ .Values.controller.image.tag }}
+          image: {{ .Values.controller.image }}
           env:
             - name: POD_IP
               valueFrom:
                 fieldRef: 
                   fieldPath: status.podIP
             - name: PGDATABASE 
-              value: {{ .Values.postgres.dbName }}
+              value: {{ .Values.dbName }}
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-passwords
                   key: CONTROLLER_USER_PASSWORD
           args: 
-            - --time-step=10
+            - --time-step={{ .Values.controller.timeStep }}
             - --management-port=80
             - --promote-trigger-file=/shared/promote
-            - --master-service={{ .Values.postgres.masterService }}
+            - --master-service={{ .Values.masterService }}
             - --pod-ip=$(POD_IP)
-            - --db-port={{ .Values.postgres.dbPort }}
+            - --db-port={{ .Values.dbPort }}
           volumeMounts:
             - name: shared
               mountPath: /shared
@@ -105,6 +121,10 @@ spec:
               port: 80
               path: /controller/ready
             failureThreshold: 1
+          resources:
+            limits:
+              cpu: {{ .Values.controller.limits.cpu }}
+              memory: {{ .Values.controller.limits.memory }}
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
@@ -113,11 +133,11 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ .Values.postgres.pvSize }}
-        {{- if .Values.storageClassName }}
-        {{- if eq "-" .Values.storageClassName }}
+            storage: {{ .Values.postgres.storage.size }}
+        {{- if .Values.postgres.storage.className }}
+        {{- if eq "-" .Values.postgres.storage.className }}
         storageClassName: ""
         {{- else }}
-        storageClassName: "{{ .Values.storageClassName }}"
+        storageClassName: "{{ .Values.postgres.storage.className }}"
         {{- end }}
         {{- end }}

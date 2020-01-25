@@ -3,7 +3,7 @@ apiVersion: apps/v1
 metadata:
   name: consul
 spec:
-  replicas: {{ .Values.clusterSize }}
+  replicas: {{ .Values.server.clusterSize }}
   selector:
     matchLabels:
       app: consul
@@ -23,9 +23,9 @@ spec:
                   matchLabels:
                     app: consul
       containers:
-        - name: main
-          image: {{ .Values.image.name }}:{{ .Values.image.tag }}
-          args: ['agent', '-server', '-retry-join={{ .Values.serverService }}', '-bootstrap-expect={{ .Values.clusterSize }}']
+        - name: consul
+          image: {{ .Values.image }}
+          args: ['agent', '-server', '-retry-join={{ .Values.server.service }}', '-bootstrap-expect={{ .Values.server.clusterSize }}']
           volumeMounts:
             - name: data
               mountPath: /consul/data
@@ -36,6 +36,10 @@ spec:
             exec:
               command: ['/bin/sh', '-c', 'consul members -status=alive | grep $(hostname)']
             initialDelaySeconds: 60
+          resources:
+            limits:
+              cpu: {{ .Values.server.limits.cpu }}
+              memory: {{ .Values.server.limits.memory }}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -44,11 +48,11 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ .Values.pvSize }}
-        {{- if .Values.storageClassName }}
-        {{- if eq "-" .Values.storageClassName }}
+            storage: {{ .Values.server.storage.size }}
+        {{- if .Values.server.storage.className }}
+        {{- if eq "-" .Values.server.storage.className }}
         storageClassName: ""
         {{- else }}
-        storageClassName: "{{ .Values.storageClassName }}"
+        storageClassName: "{{ .Values.server.storage.className }}"
         {{- end }}
         {{- end }}

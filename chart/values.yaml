@@ -1,34 +1,62 @@
+clusterSize: 3
+dbPort: 5433
+dbName: postgres
+masterService: postgres-master
+readService: postgres
 
 consul:
-  clusterSize: 3
-  storageClassName:
-  pvSize: 100Mi
-  image:
-    name: consul
-    tag: 1.5.0
-  serverService: consul
+  image: consul:1.5.0
+  server:
+    clusterSize: 3
+    service: consul
+    storage:
+      size: 100Mi
+      className:
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  client:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+waitConsulCluster:
+  image: alpine:3.10
+  limits:
+    cpu: 100m
+    memory: 64Mi
 
 controller:
-  image:
-    name: ha-postgres-controller
-    tag: 1.0.0
+  image: ha-postgres-controller:1.0.0
+  timeStep: 10
+  limits:
+    cpu: 250m
+    memory: 64Mi
 
 postgres:
-  clusterSize: 3
-  storageClassName:
-  pvSize: 1Gi
-  image:
-    name: ha-postgres
-    tag: 11.3
-  dbName: postgres
-  dbPort: 5433
-  superuserName: postgres
-  superuserPassword: su123
-  replicationPassword: rep123
-  controllerPassword: con123  
-  masterService: postgres-master
+  image: ha-postgres:11.3
+  storage:
+    size: 1Gi
+    className:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  users:
+    su:
+      name: postgres
+      password: su123
+    replication:
+      password: rep123
+    controller:
+      password: con123
 
 haproxy:
-  image: 
-    name: haproxy
-    tag: 2.0.0
+  image: haproxy:2.0.0
+  limits:
+    cpu: 150m
+    memory: 64Mi
+  timeouts:
+    connect: 2s
+    read: 30m
+  checkInterval: 5s
+   
