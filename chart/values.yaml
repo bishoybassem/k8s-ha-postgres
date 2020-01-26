@@ -5,7 +5,7 @@ masterService: postgres-master
 readService: postgres
 
 consul:
-  image: consul:1.5.0
+  image: consul:1.6.2
   server:
     clusterSize: 3
     service: consul
@@ -34,7 +34,7 @@ controller:
     memory: 64Mi
 
 postgres:
-  image: ha-postgres:11.3
+  image: ha-postgres:12.1
   storage:
     size: 1Gi
     className:
@@ -51,7 +51,7 @@ postgres:
       password: con123
 
 haproxy:
-  image: haproxy:2.0.0
+  image: haproxy:2.1.2
   limits:
     cpu: 150m
     memory: 64Mi

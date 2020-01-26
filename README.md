@@ -71,7 +71,7 @@ To test the setup locally, the following needs to be present/installed:
    ```
 4. In a third terminal, simulate a db failure by shutting it down (You might need to execute it twice so that the db container enters `CrashLoopBackOff` state and stays down a bit):
    ```bash
-   kubectl exec -it ha-postgres-0 -c postgres -- su -c "/usr/lib/postgresql/11/bin/pg_ctl stop" postgres
+   kubectl exec -it ha-postgres-0 -c postgres -- su -c "/usr/lib/postgresql/12/bin/pg_ctl stop" postgres
    ```
    Notice that the client inserts started to fail, and after a couple of seconds, one of the standbys would be promoted to master, while the other would start replicating from it:
    ```bash

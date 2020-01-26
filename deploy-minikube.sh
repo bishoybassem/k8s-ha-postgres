@@ -1,7 +1,7 @@
 #!/bin/bash
 
 docker build -t ha-postgres-controller:1.0.0 ha-postgres-controller/
-docker build -t ha-postgres:11.3 ha-postgres/
+docker build -t ha-postgres:12.1 ha-postgres/
 
 helm uninstall ha-postgres
 

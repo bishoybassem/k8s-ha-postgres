@@ -1,4 +1,4 @@
-FROM python:3.7.3-slim-stretch
+FROM python:3.8.1-slim-buster
 
 COPY requirements.txt /
 

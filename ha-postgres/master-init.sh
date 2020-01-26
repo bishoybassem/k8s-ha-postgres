@@ -4,6 +4,8 @@ echo "Configuring initial master..."
 
 psql <<-EOF
 	ALTER SYSTEM SET listen_addresses = '127.0.0.1';
+	ALTER SYSTEM SET promote_trigger_file = '${PROMOTE_TRIGGER_FILE}';
+	ALTER SYSTEM SET recovery_target_timeline = 'latest';
 
 	CREATE ROLE replication WITH REPLICATION LOGIN PASSWORD '$REPLICATION_USER_PASSWORD';
 	CREATE ROLE controller LOGIN PASSWORD '$CONTROLLER_USER_PASSWORD';
