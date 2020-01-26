@@ -20,7 +20,7 @@ The database pod consists of the following containers:
 
 The __controller__ process is the one that drives the cluster to be highly available, it maintains the state within each database pod, and controls its components accordingly. The __controller__ has the following responsibilities:
 * Executes the health check for db, and updates Consul's check accordingly. In case it fails, Consul would then release the leadership lock, allowing any standby pod to take over the master/leader role.
-* Monitors election status and constantly tries to acquire the leadership lock. If aquired, it promotes the standby to master via `trigger_file` and updates the master's ClusterIP service to point to its pod. 
+* Monitors election status and constantly tries to acquire the leadership lock. If aquired, it promotes the standby to master by executing `pg_promote()` and updates the master's ClusterIP service to point to its pod. 
 * Exposes the health status via an HTTP endpoint `/controller/ready`, that is used by:
   * K8s to determine that the db pod is ready to accept connections (Readiness Probe).
   * DNS to respond with the list of healthy db pods when the headless service is queried.

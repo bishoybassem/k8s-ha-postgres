@@ -17,6 +17,7 @@ export PGUSER=postgres
 export PGPASSWORD=su123
 export PGDATABASE=postgres
 export PGPORT=5433
+export PGCONNECT_TIMEOUT=1
 echo "Creating test table ..."
 psql -qc "create table if not exists test(id serial, data text)"
 

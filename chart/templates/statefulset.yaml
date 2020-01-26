@@ -40,8 +40,6 @@ spec:
               cpu: {{ .Values.waitConsulCluster.limits.cpu }}
               memory: {{ .Values.waitConsulCluster.limits.memory }}
       volumes:
-        - name: shared
-          emptyDir: {}
         - name: haproxy-config
           configMap:
             name: haproxy-config
@@ -51,8 +49,6 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-            - name: shared
-              mountPath: /shared
           env:
             - name: POSTGRES_DB
               value: {{ .Values.dbName }}
@@ -64,8 +60,6 @@ spec:
               value: {{ .Values.dbPort | quote }}
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
-            - name: PROMOTE_TRIGGER_FILE
-              value: /shared/promote
           envFrom:
             - secretRef:
                 name: db-passwords
@@ -109,13 +103,9 @@ spec:
           args: 
             - --time-step={{ .Values.controller.timeStep }}
             - --management-port=80
-            - --promote-trigger-file=/shared/promote
             - --master-service={{ .Values.masterService }}
             - --pod-ip=$(POD_IP)
             - --db-port={{ .Values.dbPort }}
-          volumeMounts:
-            - name: shared
-              mountPath: /shared
           readinessProbe:
             httpGet:
               port: 80

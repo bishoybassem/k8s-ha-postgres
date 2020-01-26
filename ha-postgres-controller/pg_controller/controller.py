@@ -18,6 +18,7 @@ class PostgresHealthCheck(HealthCheck):
         pass
 
     def do_health_check(self):
+        conn = None
         try:
             conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=1)
             conn.cursor().execute("SELECT 1")
@@ -26,6 +27,9 @@ class PostgresHealthCheck(HealthCheck):
         except psycopg2.Error:
             logging.exception("Postgres is not healthy!")
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def check_updated(self, is_healthy):
         state.INSTANCE.healthy = is_healthy
@@ -36,8 +40,7 @@ class PostgresHealthCheck(HealthCheck):
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
 
-    def __init__(self, promote_trigger_file, master_service, pod_ip, db_port):
-        self._promote_trigger_file = promote_trigger_file
+    def __init__(self, master_service, pod_ip, db_port):
         self._master_service = master_service
         self._pod_ip = pod_ip
         self._db_port = db_port
@@ -46,15 +49,29 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
         self._current_namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
 
     def handle_status(self, is_leader):
-        state.INSTANCE.role = state.ROLE_MASTER if is_leader else state.ROLE_REPLICA
-
         if is_leader:
-            self._update_master_endpoint()
-            logging.info("Creating trigger file for master promotion!")
-            open(self._promote_trigger_file, "w").close()
+            if state.INSTANCE.role == state.ROLE_REPLICA:
+                self._promote()
 
-        continue_trying = not is_leader
-        return continue_trying
+            self._update_master_endpoint()
+            state.INSTANCE.role = state.ROLE_MASTER
+            return False
+        else:
+            state.INSTANCE.role = state.ROLE_REPLICA
+            # Return true to signal the election thread to keep trying.
+            return True
+
+    @staticmethod
+    def _promote():
+        logging.info("Executing pg_promote()!")
+        conn = None
+        try:
+            conn = psycopg2.connect(user="controller", host="localhost")
+            conn.autocommit = True
+            conn.cursor().execute("SELECT pg_promote(false);")
+        finally:
+            if conn:
+                conn.close()
 
     def _update_master_endpoint(self):
         logging.info("Updating k8s master service to point to %s!" % self._pod_ip)
@@ -82,8 +99,6 @@ def get_args():
                              'leader election')
     parser.add_argument('--management-port', type=int, default=80,
                         help='The port on which the controller exposes the management API')
-    parser.add_argument('--promote-trigger-file',
-                        help='The file that triggers replica to master promotion')
     parser.add_argument('--master-service',
                         help='The name of the k8s service pointing to the current master')
     parser.add_argument('--pod-ip',
@@ -113,7 +128,7 @@ def start_health_monitor(args):
 
 
 def start_election(args):
-    handler = PostgresMasterElectionStatusHandler(args.promote_trigger_file, args.master_service,
+    handler = PostgresMasterElectionStatusHandler(args.master_service,
                                                   args.pod_ip, args.db_port)
     election = Election(ELECTION_CONSUL_KEY, [HEALTH_CHECK_NAME], handler, args.time_step)
     election.start()
