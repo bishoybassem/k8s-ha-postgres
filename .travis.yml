@@ -1,0 +1,24 @@
+branches:
+  only:
+    - master
+    - develop
+
+dist: bionic
+language: minimal
+
+env:
+  global:
+    - MINIKUBE_VERSION=1.7.1
+    - K8S_VERSION=1.17.2
+    - HELM_VERSION=3.0.3
+
+install:
+  - ./tests/scripts/install-minikube.sh
+
+script:
+  - ./tests/scripts/deploy-chart.sh chart/values.travis.yaml
+
+after_script:
+  - kubectl describe nodes
+  - kubectl describe pods -l 'app in (consul, ha-postgres)'
+  - kubectl logs -l 'app in (consul, ha-postgres)' --all-containers=true --prefix --tail=-1

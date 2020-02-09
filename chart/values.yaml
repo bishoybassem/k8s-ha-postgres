@@ -54,7 +54,7 @@ haproxy:
   image: haproxy:2.1.2
   limits:
     cpu: 150m
-    memory: 64Mi
+    memory: 128Mi
   timeouts:
     connect: 2s
     read: 30m

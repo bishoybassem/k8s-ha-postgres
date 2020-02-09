@@ -6,9 +6,6 @@ function quit() {
 
 trap quit INT TERM 
 
-echo "Waiting for db pods to be ready..."
-kubectl wait --for=condition=Ready pod -l app=ha-postgres
-
 master_service_ip=$(kubectl get svc postgres-master -o jsonpath='{.spec.clusterIP}')
 echo "Master db service ip $master_service_ip"
 

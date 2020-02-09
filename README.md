@@ -1,5 +1,7 @@
 # HA PostgreSQL on Kubernetes
 
+[![Build Status](https://travis-ci.org/bishoybassem/k8s-ha-postgres.svg?branch=master)](https://travis-ci.org/bishoybassem/k8s-ha-postgres)
+
 This project serves as a proof of concept for a highly available PostgreSQL setup using Consul, HAProxy and Kubernetes. Moreover, Helm is used to package and install the database to the cluster.
 
 ## Features
@@ -41,11 +43,15 @@ To test the setup locally, the following needs to be present/installed:
 ## Steps
 
 1. Clone the repository, and navigate to the clone directory.
-2. Run the deployment script, which builds the docker images, and installs the helm chart:
+2. Run the chart deployment script, which builds the docker images, installs the helm chart, and waits for the cluster to be ready:
    ```bash
-   ./deploy-minikube.sh
+   ./tests/scripts/deploy-chart.sh
    ```
-   The script also watches the pods, and when the cluster is ready, the output should look like this:
+3. Monitor the cluster state by running the following:
+   ```bash
+   watch -t kubectl get pods
+   ```
+   The watch command will keep refreshing the pods' info, and the output should look like this:
    ```bash
    NAME            READY   STATUS    RESTARTS   AGE
    consul-0        1/1     Running   0          2m2s
@@ -55,9 +61,9 @@ To test the setup locally, the following needs to be present/installed:
    ha-postgres-1   4/4     Running   0          69s
    ha-postgres-2   4/4     Running   0          44s
    ```
-3. In another terminal, run the demo script, which would get the master's ClusterIP service, create a test table, and start inserting records using `psql`:
+4. In another terminal, run the demo script, which would get the master's ClusterIP service, create a test table, and start inserting records using `psql`:
    ```bash
-   ./demo.sh
+   ./tests/scripts/demo.sh
    ```
    The script also outputs some useful stats and keeps refreshing them:
    ```bash
@@ -69,7 +75,7 @@ To test the setup locally, the following needs to be present/installed:
      ha-postgres-1: 250 records -> standby
      ha-postgres-2: 250 records -> standby
    ```
-4. In a third terminal, simulate a db failure by shutting it down (You might need to execute it twice so that the db container enters `CrashLoopBackOff` state and stays down a bit):
+5. In a third terminal, simulate a db failure by shutting it down (You might need to execute it twice so that the db container enters `CrashLoopBackOff` state and stays down a bit):
    ```bash
    kubectl exec -it ha-postgres-0 -c postgres -- su -c "/usr/lib/postgresql/12/bin/pg_ctl stop" postgres
    ```
@@ -83,7 +89,7 @@ To test the setup locally, the following needs to be present/installed:
      ha-postgres-1: 530 records -> standby
      ha-postgres-2: 530 records -> master
    ```
-5. Now that the old master is down, the cluster admin needs to cleanup its PV and delete the pod:
+6. Now that the old master is down, the cluster admin needs to cleanup its PV and delete the pod:
    ```bash
    kubectl exec -it ha-postgres-0 -c postgres -- rm -rf "/var/lib/postgresql/data"
    kubectl delete pod ha-postgres-0

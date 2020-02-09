@@ -1,0 +1,24 @@
+consul:
+  server:
+    clusterSize: 1
+    limits:
+      cpu: 150m
+  client:
+    limits:
+      cpu: 75m
+
+waitConsulCluster:
+  limits:
+    cpu: 50m
+
+controller:
+  limits:
+    cpu: 75m
+
+postgres:
+  limits:
+    cpu: 200m
+
+haproxy:
+  limits:
+    cpu: 50m
