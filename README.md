@@ -45,7 +45,7 @@ To test the setup locally, the following needs to be present/installed:
 1. Clone the repository, and navigate to the clone directory.
 2. Run the chart deployment script, which builds the docker images, installs the helm chart, and waits for the cluster to be ready:
    ```bash
-   ./tests/scripts/deploy-chart.sh
+   ./scripts/deploy-chart.sh
    ```
 3. Monitor the cluster state by running the following:
    ```bash
@@ -63,7 +63,7 @@ To test the setup locally, the following needs to be present/installed:
    ```
 4. In another terminal, run the demo script, which would get the master's ClusterIP service, create a test table, and start inserting records using `psql`:
    ```bash
-   ./tests/scripts/demo.sh
+   ./scripts/demo.sh
    ```
    The script also outputs some useful stats and keeps refreshing them:
    ```bash
@@ -91,7 +91,7 @@ To test the setup locally, the following needs to be present/installed:
    ```
 6. Now that the old master is down, the cluster admin needs to cleanup its PV and delete the pod:
    ```bash
-   kubectl exec -it ha-postgres-0 -c postgres -- rm -rf "/var/lib/postgresql/data"
+   kubectl exec -it ha-postgres-0 -c postgres -- rm -rf /var/lib/postgresql/data
    kubectl delete pod ha-postgres-0
    ```
    After a bit, a new pod is created, starts as a standby, and catches up with the replication: 
