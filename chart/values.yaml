@@ -20,8 +20,14 @@ consul:
       cpu: 100m
       memory: 64Mi
 
+waitPgDataEmpty:
+  image: alpine:3.11
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
 waitConsulCluster:
-  image: alpine:3.10
+  image: alpine:3.11
   limits:
     cpu: 100m
     memory: 64Mi
@@ -59,4 +65,3 @@ haproxy:
     connect: 2s
     read: 30m
   checkInterval: 5s
-   

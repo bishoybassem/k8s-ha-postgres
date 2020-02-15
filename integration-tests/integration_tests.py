@@ -53,6 +53,8 @@ class IntegrationTest(unittest.TestCase):
         logging.info("Checking that the read service excludes the old master db pod")
         retry_call(self.assert_read_service_excludes_pod, fargs=(master_db_pod_name,), tries=5, delay=1)
 
+        self.__class__.dead_master_db_pod_name = master_db_pod_name
+
     def assert_conn_is_closed(self, conn):
         with self.assertRaises(OperationalError) as cm:
             conn.cursor().execute('SELECT 1')
@@ -66,15 +68,39 @@ class IntegrationTest(unittest.TestCase):
     def assert_read_service_excludes_pod(self, excluded_pod):
         self.assertNotIn(excluded_pod, self.get_read_db_pods().keys())
 
-    def test3_replication_after_failover(self):
+    def test3_old_master_cleanup(self):
+        dead_master_db_pod_name = self.__class__.dead_master_db_pod_name
+        logging.info("Deleting the dead master db pod %s", dead_master_db_pod_name)
+        self._api_instance.delete_namespaced_pod(dead_master_db_pod_name, 'default')
+
+        logging.info("Checking that the newly created pod is waiting for pgdata cleanup")
+        retry_call(self.assert_db_pod_is_waiting_for_pgdata_cleanup, fargs=(dead_master_db_pod_name,),
+                   tries=10, delay=3)
+
+        self.clean_pgdata(dead_master_db_pod_name)
+
+        logging.info("Checking that the newly created pod is ready")
+        retry_call(self.assert_pod_is_ready, fargs=(dead_master_db_pod_name,), tries=20, delay=5)
+
+    def assert_db_pod_is_waiting_for_pgdata_cleanup(self, pod_name):
+        output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, 'default',
+                               container='wait-pgdata-empty', command=['pgrep', 'sleep'], stderr=True,
+                               stdin=False, stdout=True, tty=False)
+
+        self.assertTrue(output.isdigit(), "Expected a process number as output, but none found!")
+
+    def assert_pod_is_ready(self, pod_name):
+        self.assertTrue(self.is_pod_condition(pod_name, 'Ready'), "Expected pod to be in Ready condition")
+
+    def test4_replication_after_failover(self):
         table_name, table_row_count = self.create_table()
-        for db_pod_name, db_pod_ip in self.get_read_db_pods().items():
+        for db_pod_name, db_pod_ip in self.get_all_db_pods().items():
             logging.info("Checking table size on %s", db_pod_name)
             retry_call(self.assert_table_size, fargs=(db_pod_ip, table_name, table_row_count), tries=5, delay=1)
 
     def create_table(self):
         table_name = 't' + str(random.randint(0, 100000))
-        table_row_count = 10000
+        table_row_count = 1000
         row_data = 'X' * 1000
         query = 'CREATE TABLE ' + table_name + ' AS select generate_series(1, %s) AS id, %s AS data'
 
@@ -106,6 +132,13 @@ class IntegrationTest(unittest.TestCase):
                 for item in self._api_instance.list_namespaced_pod('default').items
                 if item.metadata.labels.get('app') == 'ha-postgres'}
 
+    def is_pod_condition(self, pod_name, condition_type):
+        for condition in self._api_instance.read_namespaced_pod(pod_name, 'default').status.conditions:
+            if condition.type == condition_type:
+                return condition.status == 'True'
+
+        raise AssertionError("Condition with type '%s' should have been found!" % condition_type)
+
     @staticmethod
     def open_db_conn(db_host_ip):
         return psycopg2.connect(user='postgres', password='su123', database='postgres',
@@ -128,12 +161,24 @@ class IntegrationTest(unittest.TestCase):
 
     @staticmethod
     def stress_db_pod_cpu(pod_name):
-        exec_command = [
+        stress_command = [
             '/bin/bash', '-c',
             'apt-get update; apt-get install -y stress; stress --cpu 1000 -t 20s']
 
         output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, 'default',
-                               container='postgres', command=exec_command, stderr=True, stdin=False,
+                               container='postgres', command=stress_command, stderr=True, stdin=False,
                                stdout=True, tty=False)
 
-        logging.info("Executed stress command for pod %s output:\n %s", pod_name, output)
+        logging.info("Executed stress command for pod %s, with output:\n %s", pod_name, output)
+
+    @staticmethod
+    def clean_pgdata(db_pod_name):
+        cleanup_command = [
+            '/bin/sh', '-c',
+            'rm -rf /pgdata/*; touch /proceed']
+
+        output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, 'default',
+                               container='wait-pgdata-empty', command=cleanup_command, stderr=True, stdin=False,
+                               stdout=True, tty=False)
+
+        logging.info("Executed cleanup command for pod %s, with output: %s", db_pod_name, output)

@@ -25,7 +25,12 @@ spec:
       containers:
         - name: consul
           image: {{ .Values.image }}
-          args: ['agent', '-server', '-retry-join={{ .Values.server.service }}', '-bootstrap-expect={{ .Values.server.clusterSize }}']
+          args: 
+            - agent 
+            - -server
+            - -retry-join={{ .Values.server.service }}
+            - -bootstrap-expect={{ .Values.server.clusterSize }}
+            - -client=0.0.0.0 
           volumeMounts:
             - name: data
               mountPath: /consul/data

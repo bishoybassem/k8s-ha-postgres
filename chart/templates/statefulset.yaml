@@ -26,13 +26,36 @@ spec:
                   matchLabels:
                     app: ha-postgres
       initContainers:
+        - name: wait-pgdata-empty
+          image: {{ .Values.waitPgDataEmpty.image }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /pgdata
+          command:
+            - sh
+            - -c
+            - |
+              if [ -z "$(find /pgdata -type f -print -quit)" ]; then
+                exit 0
+              fi
+              echo -e "The postgres-data PV is not empty!\nThe cluster admin must decide whether to clean it up before proceeding or not!"
+              echo -e "To proceed, please execute:\n  touch /proceed"
+              until [ -f proceed ]; do
+                sleep 5s
+              done
+          resources:
+            limits:
+              cpu: {{ .Values.waitPgDataEmpty.limits.cpu }}
+              memory: {{ .Values.waitPgDataEmpty.limits.memory }}
         - name: wait-consul-cluster
           image: {{ .Values.waitConsulCluster.image }}
           command:
             - sh
-            - -cx
+            - -c
             - |
-              while [ $(nslookup {{ .Values.consul.server.service }} 2> /dev/null | grep -c "Address [0-9]:") -ne {{ .Values.consul.server.clusterSize }} ]; do
+              apk update
+              apk add curl
+              until curl -fs -m 1 http://{{ .Values.consul.server.service }}:8500/v1/status/leader | grep -Fq :; do
                 sleep 3s
               done 
           resources:

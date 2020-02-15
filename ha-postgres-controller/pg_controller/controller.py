@@ -1,11 +1,13 @@
-import sys
-import psycopg2
-import logging
 import argparse
-import threading
+import logging
 import signal
+import sys
+import threading
+
+import psycopg2
 import requests
 from kubernetes import client, config
+
 from pg_controller import state
 from pg_controller.workers.election import Election, ElectionStatusHandler
 from pg_controller.workers.health_monitor import HealthMonitor, HealthCheck

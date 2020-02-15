@@ -15,17 +15,18 @@ function role_decided() {
 }
 
 until role_decided; do
-    echo "Waiting for the role to be decided by the controller!"
-    sleep 5s
+	echo "Waiting for the role to be decided by the controller!"
+	sleep 5s
 done
 
-if [ "$(get_role)" == "Replica" ] && [ ! -f ${PGDATA}/recovery.conf ]; then
-    echo "Starting as a replica..."
-    export PGPASSWORD=${REPLICATION_USER_PASSWORD}
-    pg_basebackup -h ${POSTGRES_MASTER_HOST} -p ${POSTGRES_MASTER_PORT} -U replication -D ${PGDATA} -PRv
-fi
+role=$(get_role)
+echo "Starting as $role..."
 
-touch init_completed
+if [ "$role" == "Replica" ] && [ -z "$(find ${PGDATA} -type f -print -quit)" ]; then
+	echo "Taking a base backup of the current master..."
+	export PGPASSWORD=${REPLICATION_USER_PASSWORD}
+	pg_basebackup -h ${POSTGRES_MASTER_HOST} -p ${POSTGRES_MASTER_PORT} -U replication -D ${PGDATA} -PRv
+fi
 
 mv /master-init.sh /docker-entrypoint-initdb.d/0-master-init.sh
 exec docker-entrypoint.sh postgres

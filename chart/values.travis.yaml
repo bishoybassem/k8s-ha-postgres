@@ -7,6 +7,10 @@ consul:
     limits:
       cpu: 75m
 
+waitPgDataEmpty:
+  limits:
+    cpu: 50m
+
 waitConsulCluster:
   limits:
     cpu: 50m

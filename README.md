@@ -30,7 +30,9 @@ The __controller__ process is the one that drives the cluster to be highly avail
 * Exposes the role via HTTP endpoint `/controller/role`, that is queried by the db container during startup, and would answer with one of the following:
   * `Master`, which causes the db to start as a normal master, and execute init scripts if needed.    
   * `Replica`, which causes the db to create a base backup of the current master (to be used as the starting point for streaming replication), and start in standby mode. 
-  * `DeadMaster`, which causes the db container to block during startup, thus giving a chance to the cluster's admin to cleanup the underlying PersistentVolume, and delete this pod. This way, a new db pod would be spawned as a standby with a clean filesystem. 
+  * `DeadMaster`, which causes the db container to block during startup/restarts.
+
+Finally, deleting a dead master db pod, would spawn a new one whose init container __wait-pgdata-empty__ would block if the db's PersistentVolume contains data. This way, the cluster's admin would get a chance to clean up the PV, signal the init container to proceed, and then the db pod would start as a standby with a clean filesystem. 
 
 ## Requirements
 
@@ -54,12 +56,12 @@ To test the setup locally, the following needs to be present/installed:
    The watch command will keep refreshing the pods' info, and the output should look like this:
    ```bash
    NAME            READY   STATUS    RESTARTS   AGE
-   consul-0        1/1     Running   0          2m2s
-   consul-1        1/1     Running   0          103s
-   consul-2        1/1     Running   0          95s
-   ha-postgres-0   4/4     Running   0          2m2s
-   ha-postgres-1   4/4     Running   0          69s
-   ha-postgres-2   4/4     Running   0          44s
+   consul-0        1/1     Running   0          2m
+   consul-1        1/1     Running   0          110s
+   consul-2        1/1     Running   0          103s
+   ha-postgres-0   4/4     Running   0          2m
+   ha-postgres-1   4/4     Running   0          65s
+   ha-postgres-2   4/4     Running   0          31s
    ```
 4. In another terminal, run the demo script, which would get the master's ClusterIP service, create a test table, and start inserting records using `psql`:
    ```bash
@@ -69,38 +71,44 @@ To test the setup locally, the following needs to be present/installed:
    ```bash
    Stats (DB record counts are refreshed every 10 insert attempts!)
 
-     Client inserts: 259 attempts, 0 failed
+     Client inserts: 283 attempts, 0 failed
 
-     ha-postgres-0: 250 records -> master
-     ha-postgres-1: 250 records -> standby
-     ha-postgres-2: 250 records -> standby
+     ha-postgres-0: 280 records -> master
+     ha-postgres-1: 280 records -> standby
+     ha-postgres-2: 280 records -> standby
    ```
-5. In a third terminal, simulate a db failure by shutting it down (You might need to execute it twice so that the db container enters `CrashLoopBackOff` state and stays down a bit):
+5. In a third terminal, overload the master db's cpu as follows:
    ```bash
-   kubectl exec -it ha-postgres-0 -c postgres -- su -c "/usr/lib/postgresql/12/bin/pg_ctl stop" postgres
+   kubectl exec -it ha-postgres-0 -c postgres bash
+   apt-get update
+   apt-get install -y stress
+   stress --cpu 1000 -t 20s
    ```
-   Notice that the client inserts started to fail, and after a couple of seconds, one of the standbys would be promoted to master, while the other would start replicating from it:
+   Notice that the client inserts started to fail, and shortly, one of the standbys would be promoted to master, while the other would start replicating from it:
    ```bash
    Stats (DB record counts are refreshed every 10 insert attempts!)
 
-     Client inserts: 599 attempts, 60 failed
+     Client inserts: 415 attempts, 92 failed
 
      ha-postgres-0: down
-     ha-postgres-1: 530 records -> standby
-     ha-postgres-2: 530 records -> master
+     ha-postgres-1: 318 records -> master
+     ha-postgres-2: 318 records -> standby
    ```
-6. Now that the old master is down, the cluster admin needs to cleanup its PV and delete the pod:
+6. Now that the old master is down, the cluster admin needs to delete the pod, and cleanup its PV as follows:
    ```bash
-   kubectl exec -it ha-postgres-0 -c postgres -- rm -rf /var/lib/postgresql/data
    kubectl delete pod ha-postgres-0
+   # Wait for the replacement pod to be created
+   kubectl exec -it ha-postgres-0 -c wait-pgdata-empty sh
+   rm -rf /pgdata/*
+   touch /proceed
    ```
-   After a bit, a new pod is created, starts as a standby, and catches up with the replication: 
+   The pod would then start as a standby, and catch up with the replication: 
    ```bash
    Stats (DB record counts are refreshed every 10 insert attempts!)
 
-     Client inserts: 949 attempts, 60 failed
+     Client inserts: 1246 attempts, 92 failed
 
-     ha-postgres-0: 880 records -> standby
-     ha-postgres-1: 880 records -> standby
-     ha-postgres-2: 880 records -> master
+     ha-postgres-0: 1148 records -> standby
+     ha-postgres-1: 1148 records -> master
+     ha-postgres-2: 1148 records -> standby
    ```
