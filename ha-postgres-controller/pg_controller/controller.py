@@ -9,35 +9,10 @@ import requests
 from kubernetes import client, config
 
 from pg_controller import state
+from pg_controller.checks import PostgresAliveCheck, PostgresStandbyReplicationCheck
 from pg_controller.workers.election import Election, ElectionStatusHandler
-from pg_controller.workers.health_monitor import HealthMonitor, HealthCheck
+from pg_controller.workers.health_monitor import HealthMonitor
 from pg_controller.workers.management import ManagementServer
-
-
-class PostgresHealthCheck(HealthCheck):
-
-    def __init__(self):
-        pass
-
-    def do_health_check(self):
-        conn = None
-        try:
-            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=1)
-            conn.cursor().execute("SELECT 1")
-            logging.info("Postgres is healthy!")
-            return True
-        except psycopg2.Error:
-            logging.exception("Postgres is not healthy!")
-            return False
-        finally:
-            if conn:
-                conn.close()
-
-    def check_updated(self, is_healthy):
-        state.INSTANCE.healthy = is_healthy
-
-    def check_update_failed(self):
-        state.INSTANCE.healthy = False
 
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
@@ -89,7 +64,6 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
         api_instance.patch_namespaced_endpoints(self._master_service, self._current_namespace, body)
 
 
-HEALTH_CHECK_NAME = "postgresAlive"
 ELECTION_CONSUL_KEY = "service/postgres/master"
 worker_threads = []
 
@@ -99,6 +73,11 @@ def get_args():
     parser.add_argument('--time-step', type=int,
                         help='The period (in seconds) to wait between checks/updates for health monitoring and '
                              'leader election')
+    parser.add_argument('--alive-check-failure-threshold', type=int, default=1,
+                        help='The number of failures after which the alive health check would be considered failed')
+    parser.add_argument('--standby-replication-check-failure-threshold', type=int, default=3,
+                        help='The number of failures after which the standby replication health check '
+                             'would be considered failed')
     parser.add_argument('--management-port', type=int, default=80,
                         help='The port on which the controller exposes the management API')
     parser.add_argument('--master-service',
@@ -121,10 +100,18 @@ def set_initial_role():
         response.raise_for_status()
 
 
-def start_health_monitor(args):
-    health_monitor = HealthMonitor(HEALTH_CHECK_NAME,
-                                   PostgresHealthCheck(),
-                                   args.time_step)
+def start_alive_health_monitor(args):
+    health_check = PostgresAliveCheck(args.alive_check_failure_threshold)
+    health_monitor = HealthMonitor(health_check, args.time_step)
+    health_monitor.setName("AliveMonitor")
+    health_monitor.start()
+    worker_threads.append(health_monitor)
+
+
+def start_standby_replication_health_monitor(args):
+    health_check = PostgresStandbyReplicationCheck(args.standby_replication_check_failure_threshold)
+    health_monitor = HealthMonitor(health_check, args.time_step)
+    health_monitor.setName("ReplicationMonitor")
     health_monitor.start()
     worker_threads.append(health_monitor)
 
@@ -132,7 +119,10 @@ def start_health_monitor(args):
 def start_election(args):
     handler = PostgresMasterElectionStatusHandler(args.master_service,
                                                   args.pod_ip, args.db_port)
-    election = Election(ELECTION_CONSUL_KEY, [HEALTH_CHECK_NAME], handler, args.time_step)
+
+    election = Election(ELECTION_CONSUL_KEY,
+                        [state.ALIVE_HEALTH_CHECK_NAME, state.STANDBY_REPLICATION_HEALTH_CHECK_NAME],
+                        handler, args.time_step)
     election.start()
     worker_threads.append(election)
 
@@ -160,9 +150,10 @@ def start():
     args = get_args()
 
     try:
-        start_management_server(args)
         set_initial_role()
-        start_health_monitor(args)
+        start_management_server(args)
+        start_alive_health_monitor(args)
+        start_standby_replication_health_monitor(args)
         state.INSTANCE.wait_till_healthy()
         start_election(args)
         state.INSTANCE.done_initializing()

@@ -1,11 +1,21 @@
 import threading
+from functools import reduce
+
+ROLE_MASTER = "Master"
+ROLE_REPLICA = "Replica"
+ROLE_DEAD_MASTER = "DeadMaster"
+ALIVE_HEALTH_CHECK_NAME = "postgresAlive"
+STANDBY_REPLICATION_HEALTH_CHECK_NAME = "postgresStandbyReplication"
 
 
 class State:
 
     def __init__(self):
         self._role = None
-        self._healthy = threading.Event()
+        self._health_checks = {
+            ALIVE_HEALTH_CHECK_NAME: threading.Event(),
+            STANDBY_REPLICATION_HEALTH_CHECK_NAME: threading.Event()
+        }
         self._initialized = False
 
     @property
@@ -18,19 +28,20 @@ class State:
 
     @property
     def healthy(self):
-        return self._healthy.is_set()
+        return reduce(lambda x, y: x.is_set() and y.is_set(), self._health_checks.values())
 
-    @healthy.setter
-    def healthy(self, healthy):
-        if healthy:
-            self._healthy.set()
+    def set_health_check(self, name, is_passing):
+        if is_passing:
+            self._health_checks[name].set()
         else:
-            self._healthy.clear()
-            if self._initialized and self._role == ROLE_MASTER:
-                self._role = ROLE_DEAD_MASTER
+            self._health_checks[name].clear()
+
+        if self._role == ROLE_MASTER and self._initialized and name == ALIVE_HEALTH_CHECK_NAME and not is_passing:
+            self._role = ROLE_DEAD_MASTER
 
     def wait_till_healthy(self):
-        self._healthy.wait()
+        for check in self._health_checks.values():
+            check.wait()
 
     def done_initializing(self):
         self._initialized = True
@@ -43,7 +54,4 @@ class State:
         return self._initialized and self.healthy
 
 
-ROLE_MASTER = "Master"
-ROLE_REPLICA = "Replica"
-ROLE_DEAD_MASTER = "DeadMaster"
 INSTANCE = State()

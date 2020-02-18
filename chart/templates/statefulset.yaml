@@ -92,7 +92,7 @@ spec:
               memory: {{ .Values.postgres.limits.memory }}
         - name: consul
           image: {{ .Values.consul.image }}
-          args: ["agent", "-retry-join", {{ .Values.consul.server.service | quote }}]
+          args: ["agent", "-retry-join={{ .Values.consul.server.service }}", "-retry-interval=3s"]
           resources:
             limits:
               cpu: {{ .Values.consul.client.limits.cpu }}

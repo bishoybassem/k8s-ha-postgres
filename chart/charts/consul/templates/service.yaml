@@ -6,3 +6,4 @@ spec:
   clusterIP: None
   selector:
     app: consul
+  publishNotReadyAddresses: true

@@ -30,7 +30,7 @@ spec:
             - -server
             - -retry-join={{ .Values.server.service }}
             - -bootstrap-expect={{ .Values.server.clusterSize }}
-            - -client=0.0.0.0 
+            - -client=0.0.0.0
           volumeMounts:
             - name: data
               mountPath: /consul/data
