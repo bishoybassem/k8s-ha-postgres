@@ -29,4 +29,8 @@ if [ "$role" == "Replica" ] && [ -z "$(find ${PGDATA} -type f -print -quit)" ]; 
 fi
 
 mv /master-init.sh /docker-entrypoint-initdb.d/0-master-init.sh
+for file in $(find /user-defined-init-scripts -type f); do
+	cp $file /docker-entrypoint-initdb.d/user-defined-$(basename $file)
+done
+
 exec docker-entrypoint.sh postgres

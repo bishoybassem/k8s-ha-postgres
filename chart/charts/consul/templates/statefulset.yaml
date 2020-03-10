@@ -30,17 +30,15 @@ spec:
             - -server
             - -retry-join={{ .Values.server.service }}
             - -bootstrap-expect={{ .Values.server.clusterSize }}
-            - -client=0.0.0.0
           volumeMounts:
             - name: data
               mountPath: /consul/data
-          readinessProbe:
-            exec:
-              command: ['/bin/sh', '-c', 'consul members -status=alive | grep $(hostname)']
           livenessProbe:
             exec:
-              command: ['/bin/sh', '-c', 'consul members -status=alive | grep $(hostname)']
-            initialDelaySeconds: 60
+              command: ['consul', 'members']
+          {{- if .Values.server.livenessProbe }}
+            {{ toYaml .Values.server.livenessProbe }}
+          {{- end }}
           resources:
             limits:
               cpu: {{ .Values.server.limits.cpu }}

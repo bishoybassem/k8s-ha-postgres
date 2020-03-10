@@ -1,67 +1,76 @@
-clusterSize: 3
-dbPort: 5433
-dbName: postgres
-masterService: postgres-master
-readService: postgres
-
 consul:
   image: consul:1.6.2
   server:
     clusterSize: 3
     service: consul
-    storage:
-      size: 100Mi
-      className:
+    livenessProbe:
+      initialDelaySeconds: 60
     limits:
       cpu: 250m
       memory: 128Mi
+    storage:
+      size: 100Mi
+      className:
   client:
     limits:
       cpu: 100m
       memory: 64Mi
 
-waitPgDataEmpty:
-  image: alpine:3.11
-  limits:
-    cpu: 100m
-    memory: 64Mi
+lb:
+  clusterSize: 2
+  service: postgres
+  masterDbPort: 5432
+  standbyDbPort: 5433
+  statsPort: 9999
+  haproxy:
+    image: haproxy:2.1.2
+    timeouts:
+      connect: 2s
+      read: 30m
+    checkInterval: 5s
+    livenessProbe:
+      initialDelaySeconds: 10
+    readinessProbe:
+      failureThreshold: 1
+    limits:
+      cpu: 150m
+      memory: 256Mi
+  consulTemplate:
+    image: hashicorp/consul-template:0.24.1-alpine
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
-waitConsulCluster:
-  image: alpine:3.11
-  limits:
-    cpu: 100m
-    memory: 64Mi
-
-controller:
-  image: ha-postgres-controller:1.0.0
-  timeStep: 10
-  limits:
-    cpu: 250m
-    memory: 64Mi
-
-postgres:
-  image: ha-postgres:12.1
-  storage:
-    size: 1Gi
-    className:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  users:
-    su:
-      name: postgres
-      password: su123
-    replication:
-      password: rep123
-    controller:
-      password: con123
-
-haproxy:
-  image: haproxy:2.1.2
-  limits:
-    cpu: 150m
-    memory: 128Mi
-  timeouts:
-    connect: 2s
-    read: 30m
-  checkInterval: 5s
+db:
+  clusterSize: 3
+  name: postgres
+  waitPgDataEmpty:
+    image: alpine:3.11
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  controller:
+    image: ha-postgres-controller:1.0.0
+    timeStep: 10
+    connectTimeout: 1
+    aliveCheckFailureThreshold: 1
+    standbyReplicationCheckFailureThreshold: 4
+    limits:
+      cpu: 250m
+      memory: 64Mi
+  postgres:
+    image: ha-postgres:12.1
+    users:
+      su:
+        name: postgres
+        password: su123
+      replication:
+        password: rep123
+    settings:
+      wal_keep_segments: 10
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    storage:
+      size: 1Gi
+      className:

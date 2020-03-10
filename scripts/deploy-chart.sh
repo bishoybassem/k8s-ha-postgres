@@ -5,10 +5,10 @@ docker build -t ha-postgres:12.1 ha-postgres/
 
 if helm ls | grep -Fq ha-postgres; then
 	helm uninstall ha-postgres
-	kubectl wait --for=delete pods -l 'app in (consul, ha-postgres)'
-	kubectl delete pvc -l 'app in (consul, ha-postgres)' --wait
+	kubectl wait --for=delete pods -l 'app in (consul, ha-postgres, postgres-lb)' --timeout 1m
 fi
 
+kubectl delete pvc -l 'app in (consul, ha-postgres)' --wait
 helm install -f chart/values.yaml ${1:+-f $1} ha-postgres chart/
 
 postgres_count=$(kubectl get statefulset ha-postgres -o jsonpath='{.spec.replicas}')

@@ -18,11 +18,12 @@ class Election(looping_thread.LoopingThread):
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
-    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, time_step_seconds):
+    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_ip, time_step_seconds):
         super().__init__()
         self._election_consul_key = election_consul_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
+        self._host_ip = host_ip
         self._time_step_seconds = time_step_seconds
         self._create_consul_session()
 
@@ -31,7 +32,7 @@ class Election(looping_thread.LoopingThread):
         response = requests.put(self.__class__.CONSUL_SESSION_URL.format("create"),
                                 json={"Checks": self._consul_session_checks})
 
-        logging.info("Response (%d) %s" % (response.status_code, response.text))
+        logging.info("Response (%d) %s", response.status_code, response.text)
         response.raise_for_status()
         
         self._session_id = response.json()["ID"]
@@ -40,9 +41,12 @@ class Election(looping_thread.LoopingThread):
         logging.info("Attempting to acquire lock over election key")
         response = requests.put(self.__class__.CONSUL_KV_URL.format(self._election_consul_key),
                                 params={"acquire": self._session_id},
-                                json={"Name": socket.gethostname()})
+                                json={
+                                    "host": self._host_ip,
+                                    "node": socket.gethostname()
+                                })
 
-        logging.info("Response (%d) %s" % (response.status_code, response.text))
+        logging.info("Response (%d) %s", response.status_code, response.text)
         if response.status_code == 500 and "invalid session" in response.text:
             self._create_consul_session()
         else:
@@ -54,7 +58,7 @@ class Election(looping_thread.LoopingThread):
         try:
             is_leader = self._acquire_lock()
             continue_trying = self._election_status_handler.handle_status(is_leader)
-            if not continue_trying:
+            if continue_trying is False:
                 logging.info("Status handler decided to stop the election loop!")
                 self.stop()
         except:

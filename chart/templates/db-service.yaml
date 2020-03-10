@@ -1,0 +1,8 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: ha-postgres
+spec:
+  clusterIP: None
+  selector:
+    app: ha-postgres

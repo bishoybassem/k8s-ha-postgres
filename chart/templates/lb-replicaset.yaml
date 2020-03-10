@@ -1,0 +1,90 @@
+kind: ReplicaSet
+apiVersion: apps/v1
+metadata:
+  name: postgres-lb
+spec:
+  replicas: {{ .Values.lb.clusterSize }}
+  selector:
+    matchLabels:
+      app: postgres-lb
+  template:
+    metadata:
+      labels:
+        app: postgres-lb
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm: 
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: postgres-lb
+      volumes:
+        - name: haproxy-config
+          configMap:
+            name: haproxy-config
+        - name: haproxy-scripts
+          configMap:
+            name: haproxy-scripts
+      containers:
+        - name: haproxy
+          image: {{ .Values.lb.haproxy.image }}
+          volumeMounts:
+            - name: haproxy-config
+              mountPath: /etc/haproxy
+          args: ["haproxy", "-f", "/etc/haproxy/haproxy.cfg"]
+          ports:
+            - name: master
+              containerPort: {{ .Values.lb.masterDbPort }}
+            - name: standby
+              containerPort: {{ .Values.lb.standbyDbPort }}
+            - name: stats
+              containerPort: {{ .Values.lb.statsPort }}
+          resources:
+            limits:
+              cpu: {{ .Values.lb.haproxy.limits.cpu }}
+              memory: {{ .Values.lb.haproxy.limits.memory }}
+          livenessProbe:
+            tcpSocket:
+              port: stats
+          {{- if .Values.lb.haproxy.livenessProbe }}
+            {{ toYaml .Values.lb.haproxy.livenessProbe }}
+          {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: stats
+          {{- if .Values.lb.haproxy.readinessProbe }}
+            {{ toYaml .Values.lb.haproxy.readinessProbe }}
+          {{- end }}
+        - name: consul-template
+          image: {{ .Values.lb.consulTemplate.image }}
+          volumeMounts:
+            - name: haproxy-scripts
+              mountPath: /scripts
+          workingDir: /scripts
+          args:
+            - -template=master.csv.tpl:/tmp/master.csv:sh manage-master.sh /tmp/master.csv
+            - -template=standbys.csv.tpl:/tmp/standbys.csv:sh manage-standbys.sh /tmp/standbys.csv
+            - -consul-retry-attempts=0
+            - -consul-retry-max-backoff=3s
+            - -kill-signal=SIGTERM
+            - -log-level=info
+          resources:
+            limits:
+              cpu: {{ .Values.lb.consulTemplate.limits.cpu }}
+              memory: {{ .Values.lb.consulTemplate.limits.memory }}
+        - name: consul
+          image: {{ .Values.consul.image }}
+          env:
+            - name: CONSUL_LOCAL_CONFIG
+              value: '{"service": {"name": "haproxy"}}'
+          args:
+            - agent
+            - -retry-join={{ .Values.consul.server.service }}
+            - -retry-interval=3s
+          resources:
+            limits:
+              cpu: {{ .Values.consul.client.limits.cpu }}
+              memory: {{ .Values.consul.client.limits.memory }}

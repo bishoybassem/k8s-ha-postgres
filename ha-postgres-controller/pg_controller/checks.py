@@ -8,13 +8,14 @@ from pg_controller.workers.health_monitor import HealthCheck
 
 class PostgresAliveCheck(HealthCheck):
 
-    def __init__(self, failure_threshold):
+    def __init__(self, failure_threshold, connect_timeout):
         super().__init__(state.ALIVE_HEALTH_CHECK_NAME, failure_threshold)
+        self.connect_timeout = connect_timeout
 
     def do_health_check_impl(self):
         conn = None
         try:
-            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=1)
+            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=self.connect_timeout)
             conn.cursor().execute("SELECT 1")
             logging.info("Postgres is alive!")
             return True
@@ -28,14 +29,22 @@ class PostgresAliveCheck(HealthCheck):
     def check_updated(self, is_passing):
         state.INSTANCE.set_health_check(state.ALIVE_HEALTH_CHECK_NAME, is_passing)
 
+        if is_passing is False and state.INSTANCE.role == state.ROLE_MASTER and state.INSTANCE.initialized is True:
+            state.INSTANCE.role = state.ROLE_DEAD_MASTER
+
     def check_update_failed(self):
         state.INSTANCE.set_health_check(state.ALIVE_HEALTH_CHECK_NAME, False)
+        state.INSTANCE.role = state.ROLE_DEAD_MASTER
+
+    def continue_checking(self):
+        return state.INSTANCE.role != state.ROLE_DEAD_MASTER
 
 
 class PostgresStandbyReplicationCheck(HealthCheck):
 
-    def __init__(self, failure_threshold):
+    def __init__(self, failure_threshold, connect_timeout):
         super().__init__(state.STANDBY_REPLICATION_HEALTH_CHECK_NAME, failure_threshold)
+        self.connect_timeout = connect_timeout
 
     def do_health_check_impl(self):
         if state.INSTANCE.role != state.ROLE_REPLICA:
@@ -44,7 +53,7 @@ class PostgresStandbyReplicationCheck(HealthCheck):
 
         conn = None
         try:
-            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=1)
+            conn = psycopg2.connect(user="controller", host="localhost", connect_timeout=self.connect_timeout)
             cursor = conn.cursor()
             cursor.execute("SELECT wal_receiver_status()")
             wal_receiver_status = cursor.fetchone()[0]
@@ -67,3 +76,6 @@ class PostgresStandbyReplicationCheck(HealthCheck):
 
     def check_update_failed(self):
         pass
+
+    def continue_checking(self):
+        return state.INSTANCE.role != state.ROLE_DEAD_MASTER

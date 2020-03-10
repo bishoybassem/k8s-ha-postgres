@@ -1,0 +1,129 @@
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: ha-postgres
+spec: 
+  replicas: {{ .Values.db.clusterSize }}
+  updateStrategy:
+    type: OnDelete
+  selector: 
+    matchLabels:
+      app: ha-postgres
+  serviceName: ha-postgres
+  template:
+    metadata:
+      labels:
+        app: ha-postgres
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm: 
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: ha-postgres
+      volumes:
+        - name: user-defined-postgres-init-scripts
+          configMap:
+            name: user-defined-postgres-init-scripts
+      initContainers:
+        - name: wait-pgdata-empty
+          image: {{ .Values.db.waitPgDataEmpty.image }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /pgdata
+          command:
+            - sh
+            - -c
+            - |
+              if [ -z "$(find /pgdata -type f -print -quit)" ]; then
+                exit 0
+              fi
+              echo "The postgres-data PV is not empty!"
+              echo "The cluster admin must decide whether to clean it up before proceeding or not!"
+              echo -e "To proceed, please execute:\n  touch /proceed"
+              until [ -f proceed ]; do
+                sleep 5s
+              done
+          resources:
+            limits:
+              cpu: {{ .Values.db.waitPgDataEmpty.limits.cpu }}
+              memory: {{ .Values.db.waitPgDataEmpty.limits.memory }}
+      containers:
+        - name: postgres
+          image: {{ .Values.db.postgres.image }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: user-defined-postgres-init-scripts
+              mountPath: /user-defined-init-scripts
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.db.name }}
+            - name: POSTGRES_USER
+              value: {{ .Values.db.postgres.users.su.name }}
+            - name: POSTGRES_MASTER_HOST
+              value: {{ .Values.lb.service }}
+            - name: POSTGRES_MASTER_PORT
+              value: {{ .Values.lb.masterDbPort | quote }}
+            - name: CONTROLLER_MANAGEMENT_PORT
+              value: "80"
+          envFrom:
+            - secretRef:
+                name: db-passwords
+          resources:
+            limits:
+              cpu: {{ .Values.db.postgres.limits.cpu }}
+              memory: {{ .Values.db.postgres.limits.memory }}
+        - name: consul
+          image: {{ .Values.consul.image }}
+          args:
+            - agent
+            - -retry-join={{ .Values.consul.server.service }}
+            - -retry-interval=3s
+          resources:
+            limits:
+              cpu: {{ .Values.consul.client.limits.cpu }}
+              memory: {{ .Values.consul.client.limits.memory }}
+        - name: controller
+          image: {{ .Values.db.controller.image }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef: 
+                  fieldPath: status.podIP
+            - name: PGDATABASE 
+              value: {{ .Values.db.name }}
+          args: 
+            - --time-step={{ .Values.db.controller.timeStep }}
+            - --connect-timeout={{ .Values.db.controller.connectTimeout }}
+            - --alive-check-failure-threshold={{ .Values.db.controller.aliveCheckFailureThreshold }}
+            - --standby-replication-check-failure-threshold={{ .Values.db.controller.standbyReplicationCheckFailureThreshold }}
+            - --pod-ip=$(POD_IP)
+          readinessProbe:
+            httpGet:
+              port: 80
+              path: /controller/ready
+            failureThreshold: 1
+          resources:
+            limits:
+              cpu: {{ .Values.db.controller.limits.cpu }}
+              memory: {{ .Values.db.controller.limits.memory }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.db.postgres.storage.size }}
+        {{- if .Values.db.postgres.storage.className }}
+        {{- if eq "-" .Values.db.postgres.storage.className }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: "{{ .Values.db.postgres.storage.className }}"
+        {{- end }}
+        {{- end }}

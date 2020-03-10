@@ -33,6 +33,10 @@ class HealthCheck(ABC):
     def check_update_failed(self):
         pass
 
+    @abstractmethod
+    def continue_checking(self):
+        pass
+
 
 class HealthMonitor(looping_thread.LoopingThread):
 
@@ -55,7 +59,7 @@ class HealthMonitor(looping_thread.LoopingThread):
         }
 
         response = requests.put(self.__class__.CONSUL_REGISTER_CHECK_URL, json=body)
-        logging.info("Response (%d) %s" % (response.status_code, response.text))
+        logging.info("Response (%d) %s", response.status_code, response.text)
         response.raise_for_status()
 
     def _update_consul_check(self, is_passing):
@@ -64,7 +68,7 @@ class HealthMonitor(looping_thread.LoopingThread):
         response = requests.put(self.__class__.CONSUL_UPDATE_CHECK_URL.format(self._health_check.check_name),
                                 json={"Status": status})
 
-        logging.info("Response (%d) %s" % (response.status_code, response.text))
+        logging.info("Response (%d) %s", response.status_code, response.text)
         response.raise_for_status()
 
     def do_one_run(self):
@@ -72,6 +76,8 @@ class HealthMonitor(looping_thread.LoopingThread):
             is_passing = self._health_check.do_health_check()
             self._update_consul_check(is_passing)
             self._health_check.check_updated(is_passing)
+            if self._health_check.continue_checking() is False:
+                self.stop()
         except:
             logging.exception("An error occurred during health check/update!")
             self._health_check.check_update_failed()

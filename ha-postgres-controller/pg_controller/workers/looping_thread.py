@@ -22,7 +22,7 @@ class LoopingThread(threading.Thread):
         logging.info("Stopped!")
 
     def stop(self):
-        logging.info("Stopping %s thread..." % self.name)
+        logging.info("Stopping %s thread...", self.name)
         self._exit.set()
 
     def wait(self, timeout):

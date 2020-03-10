@@ -1,10 +1,12 @@
-image: consul:1.5.0
+image: consul:1.6.2
 server:
   clusterSize: 3
   service: consul
-  storage:
-    size: 100Mi
-    className:
+  livenessProbe:
+    initialDelaySeconds: 60
   limits:
     cpu: 250m
     memory: 128Mi
+  storage:
+    size: 100Mi
+    className:

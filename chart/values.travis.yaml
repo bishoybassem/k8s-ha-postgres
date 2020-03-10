@@ -2,27 +2,33 @@ consul:
   server:
     clusterSize: 1
     limits:
-      cpu: 150m
+      cpu: 100m
   client:
     limits:
+      cpu: 50m
+
+db:
+  name: test_db
+  waitPgDataEmpty:
+    limits:
+      cpu: 50m
+  controller:
+    connectTimeout: 2
+    limits:
       cpu: 75m
+  postgres:
+    limits:
+      cpu: 200m
+    users:
+      su:
+        name: test_user
+        password: test1234
 
-waitPgDataEmpty:
-  limits:
-    cpu: 50m
-
-waitConsulCluster:
-  limits:
-    cpu: 50m
-
-controller:
-  limits:
-    cpu: 75m
-
-postgres:
-  limits:
-    cpu: 200m
-
-haproxy:
-  limits:
-    cpu: 50m
+lb:
+  clusterSize: 1
+  haproxy:
+    limits:
+      cpu: 75m
+  consulTemplate:
+    limits:
+      cpu: 50m

@@ -1,0 +1,15 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ .Values.lb.service }}
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-lb
+  ports:
+    - name: master
+      port: {{ .Values.lb.masterDbPort }}
+      targetPort: master
+    - name: standby
+      port: {{ .Values.lb.standbyDbPort }}
+      targetPort: standby

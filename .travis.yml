@@ -30,5 +30,5 @@ script:
 
 after_script:
   - kubectl describe nodes
-  - kubectl describe pods -l 'app in (consul, ha-postgres)'
-  - kubectl logs -l 'app in (consul, ha-postgres)' --all-containers=true --prefix --tail=-1
+  - kubectl describe pods -l 'app in (consul, ha-postgres, postgres-lb)'
+  - kubectl logs -l 'app in (consul, ha-postgres, postgres-lb)' --all-containers=true --prefix --tail=-1

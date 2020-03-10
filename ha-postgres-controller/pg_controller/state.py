@@ -26,22 +26,19 @@ class State:
     def role(self, role):
         self._role = role
 
-    @property
-    def healthy(self):
-        return reduce(lambda x, y: x.is_set() and y.is_set(), self._health_checks.values())
-
     def set_health_check(self, name, is_passing):
-        if is_passing:
+        if is_passing is True:
             self._health_checks[name].set()
         else:
             self._health_checks[name].clear()
 
-        if self._role == ROLE_MASTER and self._initialized and name == ALIVE_HEALTH_CHECK_NAME and not is_passing:
-            self._role = ROLE_DEAD_MASTER
-
     def wait_till_healthy(self):
         for check in self._health_checks.values():
             check.wait()
+
+    @property
+    def initialized(self):
+        return self._initialized
 
     def done_initializing(self):
         self._initialized = True
@@ -51,7 +48,8 @@ class State:
         if self._role == ROLE_DEAD_MASTER:
             return False
 
-        return self._initialized and self.healthy
+        is_healthy = reduce(lambda x, y: x.is_set() and y.is_set(), self._health_checks.values())
+        return self._initialized and is_healthy
 
 
 INSTANCE = State()
