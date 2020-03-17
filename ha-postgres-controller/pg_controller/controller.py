@@ -51,16 +51,15 @@ worker_threads = []
 
 def get_args():
     parser = argparse.ArgumentParser(description='Controller daemon for ha-postgres')
-    parser.add_argument('--time-step', type=int,
-                        help='The period (in seconds) to wait between checks/updates for health monitoring and '
-                             'leader election')
+    parser.add_argument('--check-interval', type=int,
+                        help='The time interval (in seconds) between two consecutive health/leader election checks')
     parser.add_argument('--connect-timeout', type=int, default=1,
                         help='The timeout (in seconds) for connecting to postgres during health checks')
     parser.add_argument('--alive-check-failure-threshold', type=int, default=1,
-                        help='The number of failures after which the alive health check would be considered failed')
+                        help='The number of consecutive failures for the alive health check to be considered failed')
     parser.add_argument('--standby-replication-check-failure-threshold', type=int, default=4,
-                        help='The number of failures after which the standby replication health check '
-                             'would be considered failed')
+                        help='The number of consecutive failures for the standby replication health check '
+                             'to be considered failed')
     parser.add_argument('--management-port', type=int, default=80,
                         help='The port on which the controller exposes the management API')
     parser.add_argument('--pod-ip',
@@ -87,7 +86,7 @@ def set_initial_role():
 
 def start_alive_health_monitor(args):
     health_check = PostgresAliveCheck(args.alive_check_failure_threshold, args.connect_timeout)
-    health_monitor = HealthMonitor(health_check, args.time_step)
+    health_monitor = HealthMonitor(health_check, args.check_interval)
     health_monitor.setName("AliveMonitor")
     health_monitor.start()
     worker_threads.append(health_monitor)
@@ -96,7 +95,7 @@ def start_alive_health_monitor(args):
 def start_standby_replication_health_monitor(args):
     health_check = PostgresStandbyReplicationCheck(args.standby_replication_check_failure_threshold,
                                                    args.connect_timeout)
-    health_monitor = HealthMonitor(health_check, args.time_step)
+    health_monitor = HealthMonitor(health_check, args.check_interval)
     health_monitor.setName("ReplicationMonitor")
     health_monitor.start()
     worker_threads.append(health_monitor)
@@ -115,7 +114,7 @@ def start_election(args):
                                                state.STANDBY_REPLICATION_HEALTH_CHECK_NAME],
                         election_status_handler=PostgresMasterElectionStatusHandler(),
                         host_ip=args.pod_ip,
-                        time_step_seconds=args.time_step)
+                        check_interval_seconds=args.check_interval)
     election.start()
     worker_threads.append(election)
 

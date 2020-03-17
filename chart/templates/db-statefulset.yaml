@@ -48,9 +48,7 @@ spec:
                 sleep 5s
               done
           resources:
-            limits:
-              cpu: {{ .Values.db.waitPgDataEmpty.limits.cpu }}
-              memory: {{ .Values.db.waitPgDataEmpty.limits.memory }}
+{{ toYaml .Values.db.waitPgDataEmpty.resources | indent 12 }}
       containers:
         - name: postgres
           image: {{ .Values.db.postgres.image }}
@@ -61,7 +59,7 @@ spec:
               mountPath: /user-defined-init-scripts
           env:
             - name: POSTGRES_DB
-              value: {{ .Values.db.name }}
+              value: {{ .Values.db.postgres.name }}
             - name: POSTGRES_USER
               value: {{ .Values.db.postgres.users.su.name }}
             - name: POSTGRES_MASTER_HOST
@@ -70,13 +68,18 @@ spec:
               value: {{ .Values.lb.masterDbPort | quote }}
             - name: CONTROLLER_MANAGEMENT_PORT
               value: "80"
+            {{- range $key, $value := .Values.db.seedDb }}
+            {{- if ne $key "password" }}
+            - name: SEED_DB_{{ $key | upper }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
           envFrom:
             - secretRef:
                 name: db-passwords
+              prefix: PASSWORD_
           resources:
-            limits:
-              cpu: {{ .Values.db.postgres.limits.cpu }}
-              memory: {{ .Values.db.postgres.limits.memory }}
+{{ toYaml .Values.db.postgres.resources | indent 12 }}
         - name: consul
           image: {{ .Values.consul.image }}
           args:
@@ -84,9 +87,7 @@ spec:
             - -retry-join={{ .Values.consul.server.service }}
             - -retry-interval=3s
           resources:
-            limits:
-              cpu: {{ .Values.consul.client.limits.cpu }}
-              memory: {{ .Values.consul.client.limits.memory }}
+{{ toYaml .Values.consul.client.resources | indent 12 }}
         - name: controller
           image: {{ .Values.db.controller.image }}
           env:
@@ -95,35 +96,37 @@ spec:
                 fieldRef: 
                   fieldPath: status.podIP
             - name: PGDATABASE 
-              value: {{ .Values.db.name }}
+              value: {{ .Values.db.postgres.name }}
           args: 
-            - --time-step={{ .Values.db.controller.timeStep }}
-            - --connect-timeout={{ .Values.db.controller.connectTimeout }}
-            - --alive-check-failure-threshold={{ .Values.db.controller.aliveCheckFailureThreshold }}
-            - --standby-replication-check-failure-threshold={{ .Values.db.controller.standbyReplicationCheckFailureThreshold }}
+            {{- with .Values.db.controller }}
+            - --check-interval={{ .checkInterval }}
+            - --connect-timeout={{ .connectTimeout }}
+            - --alive-check-failure-threshold={{ .aliveCheckFailureThreshold }}
+            - --standby-replication-check-failure-threshold={{ .standbyReplicationCheckFailureThreshold }}
             - --pod-ip=$(POD_IP)
+            {{- end }}
           readinessProbe:
             httpGet:
               port: 80
               path: /controller/ready
             failureThreshold: 1
           resources:
-            limits:
-              cpu: {{ .Values.db.controller.limits.cpu }}
-              memory: {{ .Values.db.controller.limits.memory }}
+{{ toYaml .Values.db.controller.resources | indent 12 }}
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
       spec:
         accessModes:
           - ReadWriteOnce
+        {{- with .Values.db.postgres.storage }}
         resources:
           requests:
-            storage: {{ .Values.db.postgres.storage.size }}
-        {{- if .Values.db.postgres.storage.className }}
-        {{- if eq "-" .Values.db.postgres.storage.className }}
+            storage: {{ .size }}
+        {{- if .className }}
+        {{- if eq "-" .className }}
         storageClassName: ""
         {{- else }}
-        storageClassName: "{{ .Values.db.postgres.storage.className }}"
+        storageClassName: {{ .className }}
+        {{- end }}
         {{- end }}
         {{- end }}

@@ -44,14 +44,14 @@ class HealthMonitor(looping_thread.LoopingThread):
     CONSUL_REGISTER_CHECK_URL = CONSUL_BASE_URL + "/agent/check/register"
     CONSUL_UPDATE_CHECK_URL = CONSUL_BASE_URL + "/agent/check/update/{}"
 
-    def __init__(self, health_check, time_step_seconds):
+    def __init__(self, health_check, check_interval_seconds):
         super().__init__()
         self._health_check = health_check
-        self._time_step_seconds = time_step_seconds
+        self._check_interval_seconds = check_interval_seconds
         self._create_consul_check()
 
     def _create_consul_check(self):
-        ttl = self._time_step_seconds + 5
+        ttl = self._check_interval_seconds + 5
         logging.info("Creating Consul TTL check: %s, with TTL: %ds", self._health_check.check_name, ttl)
         body = {
             "Name": self._health_check.check_name,
@@ -82,4 +82,4 @@ class HealthMonitor(looping_thread.LoopingThread):
             logging.exception("An error occurred during health check/update!")
             self._health_check.check_update_failed()
 
-        self.wait(self._time_step_seconds)
+        self.wait(self._check_interval_seconds)

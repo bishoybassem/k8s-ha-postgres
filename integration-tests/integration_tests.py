@@ -12,15 +12,19 @@ class IntegrationTest(unittest.TestCase):
 
     def test1_replication(self):
         master_pod_ip = self.assert_lb_backend_state("master", 1)[0][1]
+
+        table_name, table_row_count = test_utils.create_table_in_seed_db()
+        logging.info("Checking that the main db cluster is logically replicating from the seed one")
+        retry_call(self.assert_table_size, fargs=[master_pod_ip, table_name, table_row_count], tries=3, delay=3)
+
         standby_pods = self.assert_lb_backend_state("standby", 2)
 
         standby_pods_ips = [pod[1] for pod in standby_pods]
         self.assertNotIn(master_pod_ip, standby_pods_ips)
 
-        table_name, table_row_count = test_utils.create_table()
-        for db_pod_name, db_pod_ip in standby_pods:
-            logging.info("Checking table size on %s", db_pod_name)
-            retry_call(self.assert_table_size, fargs=[db_pod_ip, table_name, table_row_count], tries=3, delay=3)
+        for pod_name, pod_ip in standby_pods:
+            logging.info("Checking that the standby pod %s (main db cluster) is replicating from its master", pod_name)
+            retry_call(self.assert_table_size, fargs=[pod_ip, table_name, table_row_count], tries=3, delay=3)
 
     def test2_failover(self):
         master_pod_name, master_pod_ip = self.assert_lb_backend_state("master", 1)[0]
@@ -75,7 +79,7 @@ class IntegrationTest(unittest.TestCase):
         dead_master_db_pod_name = self.__class__.dead_master_db_pod_name
 
         logging.info("Deleting the dead master pod %s", dead_master_db_pod_name)
-        test_utils.API_INSTANCE.delete_namespaced_pod(dead_master_db_pod_name, 'default')
+        test_utils.API_INSTANCE.delete_namespaced_pod(dead_master_db_pod_name, test_utils.MAIN_NAMESPACE)
 
         logging.info("Waiting for the newly created pod to start, and block for pgdata cleanup")
         retry_call(self.assert_db_pod_is_waiting_for_pgdata_cleanup, fargs=[dead_master_db_pod_name],
@@ -117,7 +121,7 @@ class IntegrationTest(unittest.TestCase):
 
     def assert_table_size(self, db_host_ip, table_name, expected_row_count):
         query = "SELECT count(*) FROM " + table_name
-        row_count = test_utils.execute_query(db_host_ip, query)[0][0]
+        row_count = test_utils.execute_query(db_host_ip, 5432, query)[0][0]
         self.assertEqual(expected_row_count, row_count)
 
     def assert_conn_is_closed(self, conn):
@@ -129,7 +133,7 @@ class IntegrationTest(unittest.TestCase):
 
     def assert_lb_backend_state(self, backend, enabled_count):
         servers = test_utils.get_lb_backend_servers(backend)
-        logging.info("Current %s state: %s", backend, servers)
+        logging.info("Current %s backend state: %s", backend, servers)
 
         enabled_servers = list(filter(lambda server: server[2] == '2', servers))
         self.assertEqual(enabled_count, len(enabled_servers),
@@ -139,7 +143,7 @@ class IntegrationTest(unittest.TestCase):
         return enabled_pods
 
     def assert_db_pod_is_waiting_for_pgdata_cleanup(self, pod_name):
-        output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, 'default',
+        output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, test_utils.MAIN_NAMESPACE,
                                container='wait-pgdata-empty', command=['pgrep', 'sleep'], stderr=True,
                                stdin=False, stdout=True, tty=False)
 

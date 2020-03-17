@@ -1,0 +1,8 @@
+db:
+  seedDb:
+    host: postgres-test.seed
+    port: 6432
+    name: test_db
+    user: test_user
+    password: test1234
+    publication: seed

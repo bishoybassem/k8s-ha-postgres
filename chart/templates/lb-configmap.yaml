@@ -5,7 +5,7 @@ metadata:
 data:
   haproxy.cfg: |
     global 
-        stats socket *:{{ .Values.lb.statsPort }} level user
+        stats socket *:{{ .Values.lb.haproxy.statsPort }} level user
         stats socket 127.0.0.1:9998 level admin
 
     defaults

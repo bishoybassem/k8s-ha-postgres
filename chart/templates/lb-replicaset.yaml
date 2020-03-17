@@ -41,23 +41,21 @@ spec:
             - name: standby
               containerPort: {{ .Values.lb.standbyDbPort }}
             - name: stats
-              containerPort: {{ .Values.lb.statsPort }}
+              containerPort: {{ .Values.lb.haproxy.statsPort }}
           resources:
-            limits:
-              cpu: {{ .Values.lb.haproxy.limits.cpu }}
-              memory: {{ .Values.lb.haproxy.limits.memory }}
+{{ toYaml .Values.lb.haproxy.resources | indent 12 }}
           livenessProbe:
             tcpSocket:
               port: stats
-          {{- if .Values.lb.haproxy.livenessProbe }}
-            {{ toYaml .Values.lb.haproxy.livenessProbe }}
-          {{- end }}
+{{- if .Values.lb.haproxy.livenessProbe }}
+{{ toYaml .Values.lb.haproxy.livenessProbe | indent 12 }}
+{{- end }}
           readinessProbe:
             tcpSocket:
               port: stats
-          {{- if .Values.lb.haproxy.readinessProbe }}
-            {{ toYaml .Values.lb.haproxy.readinessProbe }}
-          {{- end }}
+{{- if .Values.lb.haproxy.readinessProbe }}
+{{ toYaml .Values.lb.haproxy.readinessProbe | indent 12 }}
+{{- end }}
         - name: consul-template
           image: {{ .Values.lb.consulTemplate.image }}
           volumeMounts:
@@ -72,9 +70,7 @@ spec:
             - -kill-signal=SIGTERM
             - -log-level=info
           resources:
-            limits:
-              cpu: {{ .Values.lb.consulTemplate.limits.cpu }}
-              memory: {{ .Values.lb.consulTemplate.limits.memory }}
+{{ toYaml .Values.lb.consulTemplate.resources | indent 12 }}
         - name: consul
           image: {{ .Values.consul.image }}
           env:
@@ -85,6 +81,4 @@ spec:
             - -retry-join={{ .Values.consul.server.service }}
             - -retry-interval=3s
           resources:
-            limits:
-              cpu: {{ .Values.consul.client.limits.cpu }}
-              memory: {{ .Values.consul.client.limits.memory }}
+{{ toYaml .Values.consul.client.resources | indent 12 }}

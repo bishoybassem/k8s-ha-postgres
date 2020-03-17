@@ -4,9 +4,10 @@ server:
   service: consul
   livenessProbe:
     initialDelaySeconds: 60
-  limits:
-    cpu: 250m
-    memory: 128Mi
+  resources:
+    limits:
+      cpu: 250m
+      memory: 128Mi
   storage:
     size: 100Mi
     className:

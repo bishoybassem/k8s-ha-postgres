@@ -1,65 +1,15 @@
-consul:
-  image: consul:1.6.2
-  server:
-    clusterSize: 3
-    service: consul
-    livenessProbe:
-      initialDelaySeconds: 60
-    limits:
-      cpu: 250m
-      memory: 128Mi
-    storage:
-      size: 100Mi
-      className:
-  client:
-    limits:
-      cpu: 100m
-      memory: 64Mi
-
-lb:
-  clusterSize: 2
-  service: postgres
-  masterDbPort: 5432
-  standbyDbPort: 5433
-  statsPort: 9999
-  haproxy:
-    image: haproxy:2.1.2
-    timeouts:
-      connect: 2s
-      read: 30m
-    checkInterval: 5s
-    livenessProbe:
-      initialDelaySeconds: 10
-    readinessProbe:
-      failureThreshold: 1
-    limits:
-      cpu: 150m
-      memory: 256Mi
-  consulTemplate:
-    image: hashicorp/consul-template:0.24.1-alpine
-    limits:
-      cpu: 100m
-      memory: 64Mi
-
 db:
   clusterSize: 3
-  name: postgres
-  waitPgDataEmpty:
-    image: alpine:3.11
-    limits:
-      cpu: 100m
-      memory: 64Mi
-  controller:
-    image: ha-postgres-controller:1.0.0
-    timeStep: 10
-    connectTimeout: 1
-    aliveCheckFailureThreshold: 1
-    standbyReplicationCheckFailureThreshold: 4
-    limits:
-      cpu: 250m
-      memory: 64Mi
+  seedDb:
+    host:
+    port:
+    name:
+    user:
+    password:
+    publication:
   postgres:
-    image: ha-postgres:12.1
+    image: ha-postgres:12.2
+    name: postgres
     users:
       su:
         name: postgres
@@ -68,9 +18,73 @@ db:
         password: rep123
     settings:
       wal_keep_segments: 10
-    limits:
-      cpu: 500m
-      memory: 512Mi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
     storage:
       size: 1Gi
       className:
+  controller:
+    image: ha-postgres-controller:1.0.0
+    checkInterval: 10
+    connectTimeout: 1
+    aliveCheckFailureThreshold: 1
+    standbyReplicationCheckFailureThreshold: 4
+    resources:
+      limits:
+        cpu: 250m
+        memory: 64Mi
+  waitPgDataEmpty:
+    image: alpine:3.11
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+lb:
+  clusterSize: 2
+  service: postgres
+  masterDbPort: 5432
+  standbyDbPort: 5433
+  haproxy:
+    image: haproxy:2.1.2
+    timeouts:
+      connect: 2s
+      read: 30m
+    checkInterval: 5s
+    statsPort: 9999
+    livenessProbe:
+      initialDelaySeconds: 10
+    readinessProbe:
+      failureThreshold: 1
+    resources:
+      limits:
+        cpu: 150m
+        memory: 256Mi
+  consulTemplate:
+    image: hashicorp/consul-template:0.24.1-alpine
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+consul:
+  image: consul:1.6.2
+  server:
+    clusterSize: 3
+    service: consul
+    livenessProbe:
+      initialDelaySeconds: 60
+    resources:
+      limits:
+        cpu: 250m
+        memory: 128Mi
+    storage:
+      size: 100Mi
+      className:
+  client:
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi

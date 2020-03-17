@@ -1,0 +1,4 @@
+db:
+  clusterSize: 1
+  postgres:
+    image: ha-postgres:12.0

@@ -1,0 +1,51 @@
+db:
+  postgres:
+    name: test_db
+    users:
+      su:
+        name: test_user
+        password: test1234
+    resources:
+      requests:
+        cpu: 100m
+      limits:
+        cpu: 200m
+  controller:
+    connectTimeout: 2
+    resources:
+      limits:
+        cpu: 75m
+  waitPgDataEmpty:
+    resources:
+      limits:
+        cpu: 50m
+
+lb:
+  clusterSize: 1
+  service: postgres-test
+  masterDbPort: 6432
+  standbyDbPort: 6433
+  haproxy:
+    statsPort: 8999
+    resources:
+      requests:
+        cpu: 50m
+      limits:
+        cpu: 100m
+  consulTemplate:
+    resources:
+      limits:
+        cpu: 50m
+
+consul:
+  server:
+    clusterSize: 1
+    resources:
+      requests:
+        cpu: 50m
+      limits:
+        cpu: 100m
+  client:
+    resources:
+      limits:
+        cpu: 50m

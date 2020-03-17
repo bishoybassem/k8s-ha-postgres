@@ -18,13 +18,14 @@ class Election(looping_thread.LoopingThread):
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
-    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_ip, time_step_seconds):
+    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_ip,
+                 check_interval_seconds):
         super().__init__()
         self._election_consul_key = election_consul_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
         self._host_ip = host_ip
-        self._time_step_seconds = time_step_seconds
+        self._check_interval_seconds = check_interval_seconds
         self._create_consul_session()
 
     def _create_consul_session(self):
@@ -64,4 +65,4 @@ class Election(looping_thread.LoopingThread):
         except:
             logging.exception("An error occurred during leader election!")
 
-        self.wait(self._time_step_seconds)
+        self.wait(self._check_interval_seconds)

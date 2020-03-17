@@ -12,11 +12,13 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO,
 
 config.load_kube_config()
 
+MAIN_NAMESPACE = 'main'
+SEED_NAMESPACE = 'seed'
 API_INSTANCE = client.CoreV1Api()
-LB_SVC_IP = API_INSTANCE.read_namespaced_service('postgres', 'default').spec.cluster_ip
-LB_STATS_PORT = 9999
-MASTER_DB_PORT = 5432
-STANDBY_DB_PORT = 5433
+LB_SVC_IP = API_INSTANCE.read_namespaced_service('postgres-test', MAIN_NAMESPACE).spec.cluster_ip
+LB_STATS_PORT = 8999
+MASTER_DB_PORT = 6432
+STANDBY_DB_PORT = 6433
 PG_USER = "test_user"
 PG_PASS = "test1234"
 PG_DB = "test_db"
@@ -29,17 +31,38 @@ def create_table():
     query = 'CREATE TABLE ' + table_name + ' AS select generate_series(1, %s) AS id, %s AS data'
 
     logging.info("Creating new table %s with %d records", table_name, table_row_count)
-    execute_query(LB_SVC_IP, query, (table_row_count, row_data))
+    execute_query(LB_SVC_IP, MASTER_DB_PORT, query, (table_row_count, row_data))
     return table_name, table_row_count
 
 
-def execute_query(db_host_ip, query, *query_params):
+def create_table_in_seed_db():
+    table_name = 't' + str(random.randint(0, 100000))
+    table_row_count = 1000
+    row_data = 'X' * 1000
+    create_table_query = 'CREATE TABLE ' + table_name + ' (id INT PRIMARY KEY, data TEXT)'
+    insert_data_query = 'INSERT INTO ' + table_name + ' values (generate_series(1, %s), %s)'
+
+    logging.info("Creating new table '%s' in the main db cluster (without records)", table_name)
+    execute_query(LB_SVC_IP, MASTER_DB_PORT, create_table_query)
+
+    logging.info("Creating new table '%s' in the seed db cluster with %d records", table_name, table_row_count)
+    seed_lb_svc_ip = API_INSTANCE.read_namespaced_service('postgres-test', SEED_NAMESPACE).spec.cluster_ip
+    execute_query(seed_lb_svc_ip, MASTER_DB_PORT, create_table_query)
+    execute_query(seed_lb_svc_ip, MASTER_DB_PORT, insert_data_query, (table_row_count, row_data))
+
+    logging.info("Refreshing the subscription in the main db cluster")
+    execute_query(LB_SVC_IP, MASTER_DB_PORT, 'ALTER SUBSCRIPTION seed_from REFRESH PUBLICATION')
+
+    return table_name, table_row_count
+
+
+def execute_query(db_host_ip, port, query, *query_params):
     conn = None
     try:
-        conn = open_db_conn(db_host_ip)[0]
+        conn = open_db_conn(db_host_ip, port)[0]
         cursor = conn.cursor()
         cursor.execute(query, *query_params)
-        if re.match('^(insert|create)', query, re.IGNORECASE):
+        if re.match('^(insert|create|alter)', query, re.IGNORECASE):
             conn.commit()
         else:
             return cursor.fetchall()
@@ -78,12 +101,12 @@ def send_cmd_stats_socket(command):
 
 def get_pods(app_label_value):
     return {item.metadata.name: item.status.pod_ip
-            for item in API_INSTANCE.list_namespaced_pod('default').items
+            for item in API_INSTANCE.list_namespaced_pod(MAIN_NAMESPACE).items
             if item.metadata.labels.get('app') == app_label_value}
 
 
 def get_pod_name_by_ip(ip):
-    for item in API_INSTANCE.list_namespaced_pod('default').items:
+    for item in API_INSTANCE.list_namespaced_pod(MAIN_NAMESPACE).items:
         if item.status.pod_ip == ip:
             return item.metadata.name
 
@@ -99,7 +122,7 @@ def start_db_pod_stress(pod_name):
 
     full_output = ''
     for cmd in stress_commands:
-        full_output += stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, 'default',
+        full_output += stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, MAIN_NAMESPACE,
                                      container='postgres', command=cmd, stderr=True, stdin=False,
                                      stdout=True, tty=False)
 
@@ -114,7 +137,7 @@ def kill_wal_receiver_continuously(db_pod_name):
 
     full_output = ''
     for cmd in stress_commands:
-        full_output += stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, 'default',
+        full_output += stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, MAIN_NAMESPACE,
                                      container='postgres', command=cmd, stderr=True, stdin=False,
                                      stdout=True, tty=False)
 
@@ -126,7 +149,7 @@ def clean_pgdata(db_pod_name):
         '/bin/sh', '-c',
         'rm -rf /pgdata/*; touch /proceed']
 
-    output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, 'default',
+    output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, MAIN_NAMESPACE,
                            container='wait-pgdata-empty', command=cleanup_command, stderr=True, stdin=False,
                            stdout=True, tty=False)
 

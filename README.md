@@ -4,6 +4,13 @@
 
 This project serves as a proof of concept for a highly available PostgreSQL setup using Consul, HAProxy, and Kubernetes. Helm is used to package and install the solution to K8s. Moreover, a [Travis CI](https://travis-ci.org/bishoybassem/k8s-ha-postgres) build is set up, which installs minikube, builds the docker images, deploys the chart, and finally runs integration tests simulating different failure scenarios. 
 
+## Table of Contents
+1. [Features](#features)
+2. [Implementation](#implementation)
+3. [Demo](#demo)
+4. [Migration & Upgrades](#migration--upgrades)
+5. [Configuration](#configuration)
+
 ## Features
 
 The setup features the following:
@@ -13,6 +20,7 @@ The setup features the following:
 * A ClusterIP service to be used by clients, backed by a lb cluster with two pods at least (ReplicaSet).
 * A lb port that forwards traffic to the current master, and is to be used for writing/replication by clients/standbys. 
 * Another lb port that distributes traffic among the healthy standbys, and is to be used for read-only queries.
+* Zero downtime migration/upgrades through logical replication.
 
 ## Implementation
 
@@ -40,8 +48,8 @@ Within the db pod, the __controller__ has the following responsibilities:
 The __haproxy__ within the lb pod listens on the following ports:
 * `*:5432`, which directs traffic to the master backend.
 * `*:5433`, which balances connections among pods within the standby backend (leastconn algorithm).
-* `127.0.0.1:9998`, which exposes the Runtime API for configuring HAProxy (admin level).
-* `*:9999`, which exposes the same api, however, for querying statistics only (user level). 
+* `127.0.0.1:9998`, which exposes the Runtime API/stats socket for configuring HAProxy (admin level).
+* `*:9999`, which exposes a user level stats socket, and allows querying statistics only. 
 
 The __haproxy__ backends are configured by __consul-template__. It monitors the election key `service/postgres/master`, and updates the master backend in case the key's content changes (through the Runtime API). It also queries Consul for healthy `postgres` services, and updates the standby backend accordingly (excluding the current master from the list).
 
@@ -49,7 +57,7 @@ Additionally, __haproxy__ monitors the health of the db pods (exposed by their _
 
 Finally, deleting a dead master db pod, would spawn a new one whose init container __wait-pgdata-empty__ would block if the db's PersistentVolume contains data. This way, the cluster's admin would get a chance to clean up the PV, signal the init container to proceed, and then the db pod would start as a standby with a clean filesystem. 
 
-## Requirements
+## Demo
 
 To test the setup locally, the following needs to be present/installed:
 * Docker (used version 19.03.5-ce).
@@ -57,34 +65,29 @@ To test the setup locally, the following needs to be present/installed:
 * Kubernetes (used version 1.17.0).
 * Helm (used version 3.0.2).
 
-## Steps
-
+After installing the requirements listed above, do the following:
 1. Clone the repository, and navigate to the clone directory.
-2. Run the chart deployment script, which builds the docker images, installs the helm chart, and waits for the cluster to be ready:
+2. Run the chart deployment script with the namespace to use:
    ```bash
-   ./scripts/deploy-chart.sh
+   ./scripts/deploy-chart.sh demo-ns
    ```
-3. Monitor the cluster state by running the following:
-   ```bash
-   watch -t kubectl get pods
-   ```
-   The watch command will keep refreshing the pods' info, and the output should look like this:
+   This script would build the docker images, create the namespace (recreate if it exists), install the helm chart there, and wait for the cluster to be ready. At the end, it would output the pods in the namespace:
    ```bash
    NAME                READY   STATUS    RESTARTS   AGE
-   consul-0            1/1     Running   0          2m23s
-   consul-1            1/1     Running   0          2m12s
-   consul-2            1/1     Running   0          2m7s
-   ha-postgres-0       3/3     Running   0          2m23s
-   ha-postgres-1       3/3     Running   0          78s
-   ha-postgres-2       3/3     Running   0          42s
-   postgres-lb-cpj57   3/3     Running   0          2m23s
-   postgres-lb-zjjql   3/3     Running   0          2m23s
+   consul-0            1/1     Running   0          114s
+   consul-1            1/1     Running   0          106s
+   consul-2            1/1     Running   0          101s
+   ha-postgres-0       3/3     Running   0          114s
+   ha-postgres-1       3/3     Running   0          58s
+   ha-postgres-2       3/3     Running   0          34s
+   postgres-lb-gbqb8   3/3     Running   0          114s
+   postgres-lb-rpcvf   3/3     Running   0          114s
    ```
-4. In another terminal, run the demo script, which would get the master's ClusterIP service, create a test table, and start inserting records using `psql`:
+3. Start the demo script with the created namespace:
    ```bash
-   ./scripts/demo.sh
+   ./scripts/demo.sh demo-ns
    ```
-   The script also outputs some useful stats and keeps refreshing them:
+   This script would create a test table in the db, and keep inserting records (using the lb's ClusterIP service). It would also monitor the state of the cluster, output several stats, and keep refreshing them:
    ```bash
    Stats (LB/DB stats are refreshed every 10 insert attempts!)
 
@@ -95,9 +98,9 @@ To test the setup locally, the following needs to be present/installed:
      ha-postgres-1 | standby | t       | 240     | t
      ha-postgres-2 | standby | t       | 240     | t
    ```
-5. In a third terminal, overload the master db's cpu as follows:
+4. In another terminal, overload the master db's cpu as follows:
    ```bash
-   kubectl exec -it ha-postgres-0 -c postgres bash
+   kubectl -n demo-ns exec -it ha-postgres-0 -c postgres bash
    apt-get update
    apt-get install -y stress
    stress --cpu 1000 -t 20s
@@ -113,11 +116,11 @@ To test the setup locally, the following needs to be present/installed:
      ha-postgres-1 | master  | t       | 343     | f
      ha-postgres-2 | standby | t       | 343     | t
    ```
-6. Now that the old master is down, the cluster admin needs to delete the pod, and cleanup its PV as follows:
+5. Now that the old master is down, the cluster admin needs to delete the pod, and cleanup its PV as follows:
    ```bash
-   kubectl delete pod ha-postgres-0
+   kubectl -n demo-ns delete pod ha-postgres-0
    # Wait for the replacement pod to be created
-   kubectl exec -it ha-postgres-0 -c wait-pgdata-empty sh
+   kubectl -n demo-ns exec -it ha-postgres-0 -c wait-pgdata-empty sh
    rm -rf /pgdata/*
    touch /proceed
    ```
@@ -132,3 +135,72 @@ To test the setup locally, the following needs to be present/installed:
      ha-postgres-1 | master  | t       | 693     | f
      ha-postgres-2 | standby | t       | 693     | t
    ```
+
+## Migration & Upgrades
+The initial migration to this chart, or in-place upgrades to PostgreSQL, would incur some downtime due to the following reasons:
+* Clients won't be able to execute write queries during a master db restart. 
+* PostgreSQL db files are incompatible with newer major versions.
+* Since applications tend to pool db connections, properly draining those connections before restarting the db would be challenging. 
+
+To overcome the above issues, and with zero downtime, the following steps should be taken:
+1. Create a new db cluster with the new version/changes.
+2. Configure the new db cluster to logically replicate from the existing one (referred to as "seed db").
+3. Wait for the replication to catch up.
+4. Perform an application failover, i.e., set them to use the new db cluster.
+5. Destroy the seed db cluster.
+
+This chart allows configuring a seed db through the `db.seedDb.*` parameters (refer to the [configuration section](#configuration) below). Setting the `db.seedDb.host` would cause the master to create a subscription during initialization with the configured values.
+
+## Configuration
+The following table lists the configurable parameters of the chart and their default values:
+
+| Parameter                                               |  Description `Default`                                                                                          | 
+|---------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------| 
+| `db.clusterSize`                                        |  Db StatefulSet replicas `3`                                                                                    | 
+| `db.seedDb.host`                                        |  Db host to seed/logically replicate from `nil`                                                                 | 
+| `db.seedDb.port`                                        |  Seed db port `nil`                                                                                             | 
+| `db.seedDb.name`                                        |  Seed db name `nil`                                                                                             | 
+| `db.seedDb.user`                                        |  Seed db user `nil`                                                                                             | 
+| `db.seedDb.password`                                    |  Seed db password `nil`                                                                                         | 
+| `db.seedDb.publication`                                 |  Seed db publication name `nil`                                                                                 | 
+| `db.postgres.image`                                     |  Postgres container image <br/>`ha-postgres:12.2`                                                               | 
+| `db.postgres.name`                                      |  Postgres db name `postgres`                                                                                    | 
+| `db.postgres.users.su.name`                             |  Postgres super user's name `postgres`                                                                          | 
+| `db.postgres.users.su.password`                         |  Postgres super user's password `su123`                                                                         | 
+| `db.postgres.users.replication.password`                |  Postgres replication user's password `rep123`                                                                  | 
+| `db.postgres.settings`                                  |  Postgres additional system settings <br/>`{"wal_keep_segments": 10}`                                           | 
+| `db.postgres.resources`                                 |  Postgres container resources <br/>`{"limits": {"cpu": "500m", "memory": "512Mi"}}`                             | 
+| `db.postgres.storage.className`                         |  Postgres data PV storage class `nil`                                                                           | 
+| `db.postgres.storage.size`                              |  Postgres data PV size `1Gi`                                                                                    | 
+| `db.controller.image`                                   |  Controller container image <br/>`ha-postgres-controller:1.0.0`                                                 | 
+| `db.controller.checkInterval`                           |  Controller time interval (in seconds) between two consecutive health/leader election checks `10`               | 
+| `db.controller.connectTimeout`                          |  Controller timeout (in seconds) for connecting to postgres during health checks `1`                            | 
+| `db.controller.aliveCheckFailureThreshold`              |  Controller number of consecutive failures for the alive health check to be considered failed `1`               | 
+| `db.controller.standbyReplicationCheckFailureThreshold` |  Controller number of consecutive failures for the standby replication health check to be considered failed `4` | 
+| `db.controller.resources`                               |  Controller container resources <br/>`{"limits": {"cpu": "250m", "memory": "64Mi"}}`                            | 
+| `db.waitPgDataEmpty.image`                              |  WaitPgDataEmpty container image <br/>`alpine:3.11`                                                             | 
+| `db.waitPgDataEmpty.resources`                          |  WaitPgDataEmpty container resources <br/>`{"limits": {"cpu": "100m", "memory": "64Mi"}}`                       | 
+| `lb.clusterSize`                                        |  Lb ReplicaSet replicas `2`                                                                                     | 
+| `lb.service`                                            |  Lb ClusterIP service name `postgres`                                                                           | 
+| `lb.masterDbPort`                                       |  Lb port that forwards traffic to the current master `5432`                                                     | 
+| `lb.standbyDbPort`                                      |  Lb port that distributes traffic among the healthy standbys `5433`                                             | 
+| `lb.haproxy.image`                                      |  HAProxy container image <br/>`haproxy:2.1.2`                                                                   | 
+| `lb.haproxy.timeouts.connect`                           |  HAProxy connection attempt timeout `2s`                                                                        | 
+| `lb.haproxy.timeouts.read`                              |  HAProxy maximum inactivity time set on the client & server sides `30m`                                         | 
+| `lb.haproxy.checkInterval`                              |  HAProxy time interval between two consecutive health checks `5s`                                               | 
+| `lb.haproxy.statsPort`                                  |  HAProxy user level stats socket TCP port `9999`                                                                | 
+| `lb.haproxy.livenessProbe`                              |  HAProxy container liveness probe additional settings <br/>`{"initialDelaySeconds": 10}`                        | 
+| `lb.haproxy.readinessProbe`                             |  HAProxy container readiness probe additional settings <br/>`{"failureThreshold": 1}`                           | 
+| `lb.haproxy.resources`                                  |  HAProxy container resources <br/>`{"limits": {"cpu": "150m", "memory": "256Mi"}}`                              | 
+| `lb.consulTemplate.image`                               |  ConsulTemplate container image <br/>`hashicorp/consul-template:0.24.1-alpine`                                  | 
+| `lb.consulTemplate.resources`                           |  ConsulTemplate container resources <br/>`{"limits": {"cpu": "100m", "memory": "64Mi"}}`                        | 
+| `consul.image`                                          |  Consul container image <br/>`consul:1.6.2`                                                                     | 
+| `consul.server.clusterSize`                             |  Consul server StatefulSet replicas `3`                                                                         | 
+| `consul.server.service`                                 |  Consul server headless service name `consul`                                                                   | 
+| `consul.server.livenessProbe`                           |  Consul server container liveness probe additional settings <br/>`{"initialDelaySeconds": 60}`                  | 
+| `consul.server.resources`                               |  Consul server container resources <br/>`{"limits": {"cpu": "250m", "memory": "128Mi"}}`                        | 
+| `consul.server.storage.className`                       |  Consul server data PV storage class `nil`                                                                      | 
+| `consul.server.storage.size`                            |  Consul server data PV size `100Mi`                                                                             | 
+| `consul.client.resources`                               |  Consul client container resources <br/>`{"limits": {"cpu": "100m", "memory": "64Mi"}}`                         | 
+
+Moreover, placing `.sh`/`.sql` scripts in the chart's folder `files/postgres-init-scripts`, would cause the master to execute them during initialization.

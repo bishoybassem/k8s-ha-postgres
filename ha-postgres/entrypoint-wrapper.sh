@@ -19,18 +19,22 @@ until role_decided; do
 	sleep 5s
 done
 
-role=$(get_role)
-echo "Starting as $role..."
+export ROLE=$(get_role)
+echo "Starting as $ROLE..."
 
-if [ "$role" == "Replica" ] && [ -z "$(find ${PGDATA} -type f -print -quit)" ]; then
+if [ "$ROLE" == "Replica" ] && [ -z "$(find $PGDATA -type f -print -quit)" ]; then
 	echo "Taking a base backup of the current master..."
-	export PGPASSWORD=${REPLICATION_USER_PASSWORD}
-	pg_basebackup -h ${POSTGRES_MASTER_HOST} -p ${POSTGRES_MASTER_PORT} -U replication -D ${PGDATA} -PRv
+	export PGPASSWORD="$PASSWORD_REPLICATION_USER"
+	pg_basebackup -h $POSTGRES_MASTER_HOST -p $POSTGRES_MASTER_PORT -U replication -D $PGDATA -PRv
+	unset PGPASSWORD
 fi
 
-mv /master-init.sh /docker-entrypoint-initdb.d/0-master-init.sh
+cp /master-init.sh /docker-entrypoint-initdb.d/0-master-init.sh
 for file in $(find /user-defined-init-scripts -type f); do
-	cp $file /docker-entrypoint-initdb.d/user-defined-$(basename $file)
+	cp $file /docker-entrypoint-initdb.d/1-user-defined-$(basename $file)
 done
+cp /master-init-seed.sh /docker-entrypoint-initdb.d/2-master-init-seed.sh
+
+export POSTGRES_PASSWORD="$PASSWORD_SUPER_USER"
 
 exec docker-entrypoint.sh postgres

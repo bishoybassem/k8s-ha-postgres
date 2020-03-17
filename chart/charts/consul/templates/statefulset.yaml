@@ -36,26 +36,26 @@ spec:
           livenessProbe:
             exec:
               command: ['consul', 'members']
-          {{- if .Values.server.livenessProbe }}
-            {{ toYaml .Values.server.livenessProbe }}
-          {{- end }}
+{{- if .Values.server.livenessProbe }}
+{{ toYaml .Values.server.livenessProbe | indent 12 }}
+{{- end }}
           resources:
-            limits:
-              cpu: {{ .Values.server.limits.cpu }}
-              memory: {{ .Values.server.limits.memory }}
+{{ toYaml .Values.server.resources | indent 12 }}
   volumeClaimTemplates:
     - metadata:
         name: data
       spec:
         accessModes:
           - ReadWriteOnce
+        {{- with .Values.server.storage }}
         resources:
           requests:
-            storage: {{ .Values.server.storage.size }}
-        {{- if .Values.server.storage.className }}
-        {{- if eq "-" .Values.server.storage.className }}
+            storage: {{ .size }}
+        {{- if .className }}
+        {{- if eq "-" .className }}
         storageClassName: ""
         {{- else }}
-        storageClassName: "{{ .Values.server.storage.className }}"
+        storageClassName: {{ .className }}
+        {{- end }}
         {{- end }}
         {{- end }}

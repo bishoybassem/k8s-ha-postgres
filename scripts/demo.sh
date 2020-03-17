@@ -1,14 +1,22 @@
 #!/bin/bash -e
 
+namespace=$1
+if [ -z "$namespace" ]; then
+	echo "Usage: $0 NAMESPACE"
+	echo "Creates a test table in the db, and keeps inserting records (using the lb's ClusterIP service)."
+	echo "This script also monitors the state of the cluster, outputs several stats, and keeps refreshing them."
+	exit 1
+fi
+
 function quit() {
 	exit 0
 }
 
 trap quit INT TERM 
 
-export LB_POD_IP=$(kubectl get pods -l app=postgres-lb -o jsonpath='{.items[0].status.podIP}')
+export LB_POD_IP=$(kubectl -n $namespace get pods -l app=postgres-lb -o jsonpath='{.items[0].status.podIP}')
 export LB_STATS_PORT=9999
-export PGHOST=$(kubectl get svc postgres -o jsonpath='{.spec.clusterIP}')
+export PGHOST=$(kubectl -n $namespace get svc postgres -o jsonpath='{.spec.clusterIP}')
 export PGUSER=postgres
 export PGPASSWORD=su123
 export PGDATABASE=postgres
@@ -23,7 +31,7 @@ function print_row() {
 }
 
 function lb_stats() {
-	db_pods=$(kubectl get pods -l app=ha-postgres -o jsonpath='{range .items[*]}{.metadata.name}:{.status.podIP} {end}')
+	db_pods=$(kubectl -n $namespace get pods -l app=ha-postgres -o jsonpath='{range .items[*]}{.metadata.name}:{.status.podIP} {end}')
 	servers_state="$(echo "show servers state" | nc $LB_POD_IP $LB_STATS_PORT | grep 5432)"
 	print_row POD BACKEND ENABLED RECORDS "IN RECOVERY"
 	for pod in $db_pods; do

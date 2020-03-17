@@ -25,10 +25,13 @@ install:
   - ./scripts/install-minikube.sh
 
 script:
-  - ./scripts/deploy-chart.sh chart/values.travis.yaml
-  - ./scripts/run-integration-tests.sh
+  - POSTGRES_IMAGE_TAG=12.0 ./scripts/deploy-chart.sh seed integration-tests/chart-values.common.yaml integration-tests/chart-values.seed.yaml
+  - ./scripts/deploy-chart.sh main integration-tests/chart-values.common.yaml integration-tests/chart-values.main.yaml
+  - cd integration-tests; ./run.sh
 
 after_script:
   - kubectl describe nodes
-  - kubectl describe pods -l 'app in (consul, ha-postgres, postgres-lb)'
-  - kubectl logs -l 'app in (consul, ha-postgres, postgres-lb)' --all-containers=true --prefix --tail=-1
+  - kubectl -n main describe pods -l 'app in (consul, ha-postgres, postgres-lb)'
+  - kubectl -n main logs -l 'app in (consul, ha-postgres, postgres-lb)' --all-containers=true --prefix --tail=-1
+  - kubectl -n seed describe pods -l 'app in (consul, ha-postgres, postgres-lb)'
+  - kubectl -n seed logs -l 'app in (consul, ha-postgres, postgres-lb)' --all-containers=true --prefix --tail=-1
