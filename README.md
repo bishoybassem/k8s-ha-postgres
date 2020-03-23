@@ -24,7 +24,7 @@ The setup features the following:
 
 ## Implementation
 
-<img align="right" width="350" src="diagram.png"/>
+<img src="diagram.png"/>
 
 A database pod consists of the following containers:
 * __postgres__: the PostgreSQL database process.
