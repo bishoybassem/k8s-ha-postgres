@@ -47,6 +47,7 @@ lb:
   service: postgres
   masterDbPort: 5432
   standbyDbPort: 5433
+  maxNumberOfStandbys: 10
   haproxy:
     image: haproxy:2.1.2
     timeouts:

@@ -9,10 +9,20 @@ class ElectionStatusHandler(ABC):
 
     @abstractmethod
     def handle_status(self, is_leader):
+        """Defines the logic to handle the election status (to be implemented by subclasses)."""
+        pass
+
+    @abstractmethod
+    def continue_participating(self):
+        """Return True to signal the Election thread to continue participating (to be implemented by subclasses)."""
         pass
 
 
 class Election(looping_thread.LoopingThread):
+    """
+    Creates a Consul session associated with the controllers health checks, and keeps trying to acquire the lock over
+    the election key using the created session.
+    """
 
     CONSUL_BASE_URL = "http://localhost:8500/v1"
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
@@ -20,12 +30,18 @@ class Election(looping_thread.LoopingThread):
 
     def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_ip,
                  check_interval_seconds):
-        super().__init__()
+        """
+         :param election_consul_key: The Consul key to acquire the lock over.
+         :param consul_session_checks: The list of Consul check names to associate the session with.
+         :param election_status_handler: An ElectionStatusHandler instance that handles the election status.
+         :param host_ip: The IP to set in the election key's value if the lock was acquired.
+         :param check_interval_seconds: The time interval (in seconds) between two consecutive attempts.
+         """
+        super().__init__(check_interval_seconds)
         self._election_consul_key = election_consul_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
         self._host_ip = host_ip
-        self._check_interval_seconds = check_interval_seconds
         self._create_consul_session()
 
     def _create_consul_session(self):
@@ -56,13 +72,17 @@ class Election(looping_thread.LoopingThread):
         return response.text == "true"
 
     def do_one_run(self):
+        """
+        Attempts to acquire the lock over the election key using the created session, then passes the result to the
+        ElectionStatusHandler's handle_status method. Finally, it evaluates the ElectionStatusHandler's
+        continue_participating method to decide whether to stop or not.
+        """
         try:
             is_leader = self._acquire_lock()
-            continue_trying = self._election_status_handler.handle_status(is_leader)
-            if continue_trying is False:
-                logging.info("Status handler decided to stop the election loop!")
-                self.stop()
+            self._election_status_handler.handle_status(is_leader)
         except:
             logging.exception("An error occurred during leader election!")
 
-        self.wait(self._check_interval_seconds)
+        if self._election_status_handler.continue_participating() is False:
+            logging.info("ElectionStatusHandler decided to stop the election loop!")
+            self.stop()

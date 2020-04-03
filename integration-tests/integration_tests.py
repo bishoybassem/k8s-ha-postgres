@@ -56,7 +56,7 @@ class IntegrationTest(unittest.TestCase):
 
         logging.info("Checking that the standby connections opened to the new master are closed")
         for standby_conn in [conn[0] for conn in standby_conns if conn[1] == new_master_pod_ip]:
-            self.assert_conn_is_closed(standby_conn)
+            retry_call(self.assert_conn_is_closed, fargs=[standby_conn], tries=3, delay=3)
 
         logging.info("Checking that the remaining standby connections are still open")
         for standby_conn in [conn[0] for conn in standby_conns if conn[1] != new_master_pod_ip]:

@@ -24,7 +24,7 @@ data:
     listen standby
         bind *:{{ .Values.lb.standbyDbPort }}
         balance leastconn
-        server-template standby 0-20 127.0.0.1:5432 disabled
+        server-template standby 0-{{ sub .Values.lb.maxNumberOfStandbys 1 }} 127.0.0.1:5432 disabled
 ---
 kind: ConfigMap
 apiVersion: v1

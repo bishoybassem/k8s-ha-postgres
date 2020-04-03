@@ -14,7 +14,7 @@ docker build -t ha-postgres-controller:1.0.0 ha-postgres-controller/
 docker build --build-arg base_image_tag=$postgres_image_tag -t ha-postgres:$postgres_image_tag ha-postgres/
 
 if kubectl get ns $namespace; then
-	kubectl delete ns $namespace --timeout 1m
+	kubectl delete ns $namespace --timeout 2m
 fi
 
 kubectl create ns $namespace
@@ -22,9 +22,10 @@ kubectl create ns $namespace
 files=("$@")
 helm -n $namespace install ${files[@]/#/-f } ha-postgres chart/
 
-db_replicas=$(kubectl -n $namespace get statefulset ha-postgres -o jsonpath='{.spec.replicas}')
-for i in $(seq 0 $((db_replicas - 1))); do 
-	kubectl -n $namespace wait --for=condition=Ready pod ha-postgres-$i --timeout 2m
+db_replicas=$(kubectl -n $namespace get sts ha-postgres -o jsonpath='{.spec.replicas}')
+echo "Waiting for $db_replicas ready db replicas"
+while [ "$(kubectl -n $namespace get sts ha-postgres -o jsonpath='{.status.readyReplicas}')" != "$db_replicas" ]; do 
+	sleep 5s
 done
 
 kubectl -n $namespace get pods

@@ -8,7 +8,7 @@ function get_role() {
 
 function role_decided() {
 	role=$(get_role)
-	if [ "$role" != "Master" ] && [ "$role" != "Replica" ]; then
+	if [ "$role" != "Master" ] && [ "$role" != "Standby" ]; then
 		return 1
 	fi
 	return 0
@@ -22,7 +22,7 @@ done
 export ROLE=$(get_role)
 echo "Starting as $ROLE..."
 
-if [ "$ROLE" == "Replica" ] && [ -z "$(find $PGDATA -type f -print -quit)" ]; then
+if [ "$ROLE" == "Standby" ] && [ -z "$(find $PGDATA -type f -print -quit)" ]; then
 	echo "Taking a base backup of the current master..."
 	export PGPASSWORD="$PASSWORD_REPLICATION_USER"
 	pg_basebackup -h $POSTGRES_MASTER_HOST -p $POSTGRES_MASTER_PORT -U replication -D $PGDATA -PRv

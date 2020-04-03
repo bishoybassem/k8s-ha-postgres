@@ -25,6 +25,7 @@ lb:
   service: postgres-test
   masterDbPort: 6432
   standbyDbPort: 6433
+  maxNumberOfStandbys: 3
   haproxy:
     statsPort: 8999
     resources:

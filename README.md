@@ -184,6 +184,7 @@ The following table lists the configurable parameters of the chart and their def
 | `lb.service`                                            |  Lb ClusterIP service name `postgres`                                                                           | 
 | `lb.masterDbPort`                                       |  Lb port that forwards traffic to the current master `5432`                                                     | 
 | `lb.standbyDbPort`                                      |  Lb port that distributes traffic among the healthy standbys `5433`                                             | 
+| `lb.maxNumberOfStandbys`                                |  Maximum number of standbys that the cluster could ever have `10`                                               | 
 | `lb.haproxy.image`                                      |  HAProxy container image <br/>`haproxy:2.1.2`                                                                   | 
 | `lb.haproxy.timeouts.connect`                           |  HAProxy connection attempt timeout `2s`                                                                        | 
 | `lb.haproxy.timeouts.read`                              |  HAProxy maximum inactivity time set on the client & server sides `30m`                                         | 

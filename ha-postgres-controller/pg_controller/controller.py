@@ -16,33 +16,44 @@ from pg_controller.workers.management import ManagementServer
 
 
 class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
+    """
+    Promotes a standby database to master, by executing Postgres's 'pg_promote' sql function against the monitored
+    database.
+    """
 
     def __init__(self):
         pass
 
     def handle_status(self, is_leader):
-        if is_leader:
-            if state.INSTANCE.role == state.ROLE_REPLICA:
-                self._promote()
+        """
+        Executes 'pg_promote' sql function if the election is won, and the database role is 'Standby'. It also handles
+        promotion failures by setting the role to 'DeadMaster'.
+        """
+        if is_leader is False or state.INSTANCE.role != state.ROLE_STANDBY:
+            return
 
-            state.INSTANCE.role = state.ROLE_MASTER
-            return False
-        else:
-            state.INSTANCE.role = state.ROLE_REPLICA
-            # Return true to signal the election thread to keep trying.
-            return True
-
-    @staticmethod
-    def _promote():
-        logging.info("Executing pg_promote()!")
+        logging.info('Executing pg_promote()!')
         conn = None
         try:
-            conn = psycopg2.connect(user="controller", host="localhost")
+            conn = psycopg2.connect(user='controller', host='localhost')
             conn.autocommit = True
-            conn.cursor().execute("SELECT pg_promote(false);")
+            cursor = conn.cursor()
+            cursor.execute('SELECT pg_promote(true)')
+            result = cursor.fetchall()
+            if result[0][0] is not True:
+                raise RuntimeError('pg_promote was not successful! (result: %s)' % result)
+
+            state.INSTANCE.role = state.ROLE_MASTER
+        except:
+            logging.exception('An exception occurred during promotion!')
+            state.INSTANCE.role = state.ROLE_DEAD_MASTER
         finally:
             if conn:
                 conn.close()
+
+    def continue_participating(self):
+        """Returns True if the role is 'Standby'."""
+        return state.INSTANCE.role == state.ROLE_STANDBY
 
 
 ELECTION_CONSUL_KEY = "service/postgres/master"
@@ -69,6 +80,9 @@ def get_args():
 
 
 def set_initial_role():
+    """
+    Sets the role of the database. If the election key exists, then the assumed role is 'Master', otherwise 'Standby'.
+    """
     while state.INSTANCE.role is None:
         logging.info("Checking whether the election key exists")
         try:
@@ -77,7 +91,7 @@ def set_initial_role():
             if response.status_code == 404:
                 state.INSTANCE.role = state.ROLE_MASTER
             elif response.status_code == 200:
-                state.INSTANCE.role = state.ROLE_REPLICA
+                state.INSTANCE.role = state.ROLE_STANDBY
         except:
             logging.exception("An error occurred while sending request to local consul client!")
 
@@ -85,6 +99,7 @@ def set_initial_role():
 
 
 def start_alive_health_monitor(args):
+    """Starts a monitoring worker thread with the alive health check."""
     health_check = PostgresAliveCheck(args.alive_check_failure_threshold, args.connect_timeout)
     health_monitor = HealthMonitor(health_check, args.check_interval)
     health_monitor.setName("AliveMonitor")
@@ -93,6 +108,7 @@ def start_alive_health_monitor(args):
 
 
 def start_standby_replication_health_monitor(args):
+    """Starts a monitoring worker thread with the standby replication health check."""
     health_check = PostgresStandbyReplicationCheck(args.standby_replication_check_failure_threshold,
                                                    args.connect_timeout)
     health_monitor = HealthMonitor(health_check, args.check_interval)
@@ -102,6 +118,7 @@ def start_standby_replication_health_monitor(args):
 
 
 def register_consul_service():
+    """Registers the 'postgres' service in Consul."""
     logging.info("Registering Consul service: postgres")
     response = requests.put(Election.CONSUL_BASE_URL + "/agent/service/register", json={"Name": "postgres"})
     logging.info("Response (%d) %s", response.status_code, response.text)
@@ -109,6 +126,7 @@ def register_consul_service():
 
 
 def start_election(args):
+    """Starts the election worker thread."""
     election = Election(election_consul_key=ELECTION_CONSUL_KEY,
                         consul_session_checks=[state.ALIVE_HEALTH_CHECK_NAME,
                                                state.STANDBY_REPLICATION_HEALTH_CHECK_NAME],
@@ -120,12 +138,14 @@ def start_election(args):
 
 
 def start_management_server(args):
+    """Starts the management server worker thread."""
     management_server = ManagementServer(args.management_port)
     management_server.start()
     worker_threads.append(management_server)
 
 
 def stop(*args):
+    """Stops all worker threads, and waits for them to finish."""
     for worker_thread in worker_threads:
         worker_thread.stop()
         if worker_thread.is_alive():
@@ -133,6 +153,7 @@ def stop(*args):
 
 
 def start():
+    """Starts the controller process."""
     logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                         format='[%(asctime)s][%(threadName)s] %(levelname)s: %(message)s')
 
