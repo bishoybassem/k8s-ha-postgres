@@ -1,7 +1,9 @@
-from pg_controller.workers import looping_thread
-import requests
 import logging
 from abc import ABC, abstractmethod
+
+import requests
+
+from pg_controller.workers import looping_thread
 
 
 class HealthCheck(ABC):
@@ -86,14 +88,14 @@ class HealthMonitor(looping_thread.LoopingThread):
             "TTL": "%ds" % ttl,
         }
 
-        response = requests.put(self.__class__.CONSUL_REGISTER_CHECK_URL, json=body)
+        response = requests.put(self.CONSUL_REGISTER_CHECK_URL, json=body)
         logging.info("Response (%d) %s", response.status_code, response.text)
         response.raise_for_status()
 
     def _update_consul_check(self, is_passing):
         status = "passing" if is_passing else "critical"
         logging.info("Updating Consul TTL check: %s, with status: %s", self._health_check.check_name, status)
-        response = requests.put(self.__class__.CONSUL_UPDATE_CHECK_URL.format(self._health_check.check_name),
+        response = requests.put(self.CONSUL_UPDATE_CHECK_URL.format(self._health_check.check_name),
                                 json={"Status": status})
 
         logging.info("Response (%d) %s", response.status_code, response.text)

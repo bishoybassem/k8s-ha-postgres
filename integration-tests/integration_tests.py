@@ -144,7 +144,7 @@ class IntegrationTest(unittest.TestCase):
 
     def assert_db_pod_is_waiting_for_pgdata_cleanup(self, pod_name):
         output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, pod_name, test_utils.MAIN_NAMESPACE,
-                               container='wait-pgdata-empty', command=['pgrep', 'sleep'], stderr=True,
+                               container='clean-data', command=['pgrep', 'sleep'], stderr=True,
                                stdin=False, stdout=True, tty=False)
 
         self.assertTrue(output.isdigit(), "Expected a process number as output, but none found!")

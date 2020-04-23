@@ -1,7 +1,5 @@
-{{ with $master := key "service/postgres/master" | parseJSON -}}
 {{ range service "postgres" -}}
-{{ if ne .Address $master.host -}}
+{{ if eq "Standby" (key (print (env "CONSUL_KEY_PREFIX") "/" .Node "/role")) -}}
 {{ .Node }},{{ .Address }}
-{{ end -}}
 {{ end -}}
 {{ end -}}

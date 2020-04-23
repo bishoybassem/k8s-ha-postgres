@@ -29,15 +29,28 @@ spec:
           configMap:
             name: user-defined-postgres-init-scripts
       initContainers:
-        - name: wait-pgdata-empty
-          image: {{ .Values.db.waitPgDataEmpty.image }}
+        - name: clean-data
+          image: {{ .Values.db.cleanData.image }}
           volumeMounts:
             - name: postgres-data
               mountPath: /pgdata
+          env:
+            - name: CONSUL_HOST
+              value: {{ .Values.consul.server.service }}
+            - name: CONSUL_KEY_PREFIX
+              value: {{ .Values.db.controller.consulKeyPrefix }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           command:
             - sh
-            - -c
+            - -ec
             - |
+              echo "Cleaning up Consul keys $CONSUL_KEY_PREFIX/$POD_NAME/* ..."
+              while [ "$(curl -fs -X DELETE http://$CONSUL_HOST:8500/v1/kv/$CONSUL_KEY_PREFIX/$POD_NAME?recurse)" != "true" ]; do
+                sleep 3s
+              done
               if [ -z "$(find /pgdata -type f -print -quit)" ]; then
                 exit 0
               fi
@@ -47,8 +60,10 @@ spec:
               until [ -f proceed ]; do
                 sleep 5s
               done
+          securityContext:
+            runAsUser: 0
           resources:
-{{ toYaml .Values.db.waitPgDataEmpty.resources | indent 12 }}
+{{ toYaml .Values.db.cleanData.resources | indent 12 }}
       containers:
         - name: postgres
           image: {{ .Values.db.postgres.image }}
@@ -91,19 +106,25 @@ spec:
         - name: controller
           image: {{ .Values.db.controller.image }}
           env:
-            - name: POD_IP
+            - name: POD_NAME
               valueFrom:
                 fieldRef: 
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
                   fieldPath: status.podIP
             - name: PGDATABASE 
               value: {{ .Values.db.postgres.name }}
           args: 
             {{- with .Values.db.controller }}
+            - --consul-key-prefix={{ .consulKeyPrefix }}
             - --check-interval={{ .checkInterval }}
             - --connect-timeout={{ .connectTimeout }}
             - --alive-check-failure-threshold={{ .aliveCheckFailureThreshold }}
             - --standby-replication-check-failure-threshold={{ .standbyReplicationCheckFailureThreshold }}
-            - --pod-ip=$(POD_IP)
+            - --host-name=$(POD_NAME)
+            - --host-ip=$(POD_IP)
             {{- end }}
           readinessProbe:
             httpGet:

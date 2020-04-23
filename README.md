@@ -55,15 +55,15 @@ The __haproxy__ backends are configured by __consul-template__. It monitors the 
 
 Additionally, __haproxy__ monitors the health of the db pods (exposed by their __controller__) to determine whether to keep connections open or not. This is needed in order to force clients/slaves to retry connecting to the new master in case of a failover, or to another standby in case the one they were using experiences issues.
 
-Finally, deleting a dead master db pod, would spawn a new one whose init container __wait-pgdata-empty__ would block if the db's PersistentVolume contains data. This way, the cluster's admin would get a chance to clean up the PV, signal the init container to proceed, and then the db pod would start as a standby with a clean filesystem. 
+Finally, deleting a dead master db pod, would spawn a new one whose init container __clean-data__ would block if the db's PersistentVolume contains data. This way, the cluster's admin would get a chance to clean up the PV, signal the init container to proceed, and then the db pod would start as a standby with a clean filesystem.
 
 ## Demo
 
 To test the setup locally, the following needs to be present/installed:
-* Docker (used version 19.03.5-ce).
-* Minikube (used version 1.6.2, with `none` driver).
-* Kubernetes (used version 1.17.0).
-* Helm (used version 3.0.2).
+* Docker (used version 19.03.8-ce).
+* Minikube (used version 1.9.2, with `none` driver).
+* Kubernetes (used version 1.18.1).
+* Helm (used version 3.1.2).
 
 After installing the requirements listed above, do the following:
 1. Clone the repository, and navigate to the clone directory.
@@ -100,7 +100,7 @@ After installing the requirements listed above, do the following:
    ```
 4. In another terminal, overload the master db's cpu as follows:
    ```bash
-   kubectl -n demo-ns exec -it ha-postgres-0 -c postgres bash
+   kubectl -n demo-ns exec -it ha-postgres-0 -c postgres -- bash
    apt-get update
    apt-get install -y stress
    stress --cpu 1000 -t 20s
@@ -120,7 +120,7 @@ After installing the requirements listed above, do the following:
    ```bash
    kubectl -n demo-ns delete pod ha-postgres-0
    # Wait for the replacement pod to be created
-   kubectl -n demo-ns exec -it ha-postgres-0 -c wait-pgdata-empty sh
+   kubectl -n demo-ns exec -it ha-postgres-0 -c clean-data -- sh
    rm -rf /pgdata/*
    touch /proceed
    ```
@@ -177,9 +177,10 @@ The following table lists the configurable parameters of the chart and their def
 | `db.controller.connectTimeout`                          |  Controller timeout (in seconds) for connecting to postgres during health checks `1`                            | 
 | `db.controller.aliveCheckFailureThreshold`              |  Controller number of consecutive failures for the alive health check to be considered failed `1`               | 
 | `db.controller.standbyReplicationCheckFailureThreshold` |  Controller number of consecutive failures for the standby replication health check to be considered failed `4` | 
+| `db.controller.consulKeyPrefix`                         |  Controller Consul key path prefix to use for the election key or for storing state `ha-postgres`               | 
 | `db.controller.resources`                               |  Controller container resources <br/>`{"limits": {"cpu": "250m", "memory": "64Mi"}}`                            | 
-| `db.waitPgDataEmpty.image`                              |  WaitPgDataEmpty container image <br/>`alpine:3.11`                                                             | 
-| `db.waitPgDataEmpty.resources`                          |  WaitPgDataEmpty container resources <br/>`{"limits": {"cpu": "100m", "memory": "64Mi"}}`                       | 
+| `db.cleanData.image`                                    |  CleanData container image <br/>`curlimages/curl:7.69.1`                                                        | 
+| `db.cleanData.resources`                                |  CleanData container resources <br/>`{"limits": {"cpu": "100m", "memory": "64Mi"}}`                             | 
 | `lb.clusterSize`                                        |  Lb ReplicaSet replicas `2`                                                                                     | 
 | `lb.service`                                            |  Lb ClusterIP service name `postgres`                                                                           | 
 | `lb.masterDbPort`                                       |  Lb port that forwards traffic to the current master `5432`                                                     | 
@@ -188,7 +189,6 @@ The following table lists the configurable parameters of the chart and their def
 | `lb.haproxy.image`                                      |  HAProxy container image <br/>`haproxy:2.1.2`                                                                   | 
 | `lb.haproxy.timeouts.connect`                           |  HAProxy connection attempt timeout `2s`                                                                        | 
 | `lb.haproxy.timeouts.read`                              |  HAProxy maximum inactivity time set on the client & server sides `30m`                                         | 
-| `lb.haproxy.checkInterval`                              |  HAProxy time interval between two consecutive health checks `5s`                                               | 
 | `lb.haproxy.statsPort`                                  |  HAProxy user level stats socket TCP port `9999`                                                                | 
 | `lb.haproxy.livenessProbe`                              |  HAProxy container liveness probe additional settings <br/>`{"initialDelaySeconds": 10}`                        | 
 | `lb.haproxy.readinessProbe`                             |  HAProxy container readiness probe additional settings <br/>`{"failureThreshold": 1}`                           | 

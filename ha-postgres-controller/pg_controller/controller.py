@@ -1,9 +1,6 @@
 import argparse
 import logging
-import signal
-import sys
 import threading
-import time
 
 import psycopg2
 import requests
@@ -56,121 +53,94 @@ class PostgresMasterElectionStatusHandler(ElectionStatusHandler):
         return state.INSTANCE.role == state.ROLE_STANDBY
 
 
-ELECTION_CONSUL_KEY = "service/postgres/master"
-worker_threads = []
+class Controller:
 
+    def __init__(self):
+        self._worker_threads = []
+        self._args = self._parse_args()
+        state.INSTANCE = state.State(self._args.consul_key_prefix, self._args.host_name)
 
-def get_args():
-    parser = argparse.ArgumentParser(description='Controller daemon for ha-postgres')
-    parser.add_argument('--check-interval', type=int,
-                        help='The time interval (in seconds) between two consecutive health/leader election checks')
-    parser.add_argument('--connect-timeout', type=int, default=1,
-                        help='The timeout (in seconds) for connecting to postgres during health checks')
-    parser.add_argument('--alive-check-failure-threshold', type=int, default=1,
-                        help='The number of consecutive failures for the alive health check to be considered failed')
-    parser.add_argument('--standby-replication-check-failure-threshold', type=int, default=4,
-                        help='The number of consecutive failures for the standby replication health check '
-                             'to be considered failed')
-    parser.add_argument('--management-port', type=int, default=80,
-                        help='The port on which the controller exposes the management API')
-    parser.add_argument('--pod-ip',
-                        help='The ip of this pod')
+    @staticmethod
+    def _parse_args():
+        parser = argparse.ArgumentParser(description='Controller daemon for ha-postgres')
+        parser.add_argument('--consul-key-prefix', default='service/postgres',
+                            help='The Consul key path prefix to use for the election key or for storing state')
+        parser.add_argument('--check-interval', type=int,
+                            help='The time interval (in seconds) between two consecutive health/leader election checks')
+        parser.add_argument('--connect-timeout', type=int, default=1,
+                            help='The timeout (in seconds) for connecting to Postgres during health checks')
+        parser.add_argument('--alive-check-failure-threshold', type=int, default=1,
+                            help='The number of consecutive failures for the alive health check to be considered failed')
+        parser.add_argument('--standby-replication-check-failure-threshold', type=int, default=4,
+                            help='The number of consecutive failures for the standby replication health check '
+                                 'to be considered failed')
+        parser.add_argument('--management-port', type=int, default=80,
+                            help='The port on which the controller exposes the management API')
+        parser.add_argument('--host-name', help='The name of this host')
+        parser.add_argument('--host-ip', help='The ip of this host')
+        return parser.parse_args()
 
-    return parser.parse_args()
+    def _start_alive_health_monitor(self):
+        """Starts a monitoring worker thread with the alive health check."""
+        health_check = PostgresAliveCheck(self._args.alive_check_failure_threshold, self._args.connect_timeout)
+        health_monitor = HealthMonitor(health_check, self._args.check_interval)
+        health_monitor.setName("AliveMonitor")
+        health_monitor.start()
+        self._worker_threads.append(health_monitor)
 
+    def _start_standby_replication_health_monitor(self):
+        """Starts a monitoring worker thread with the standby replication health check."""
+        health_check = PostgresStandbyReplicationCheck(self._args.standby_replication_check_failure_threshold,
+                                                       self._args.connect_timeout)
+        health_monitor = HealthMonitor(health_check, self._args.check_interval)
+        health_monitor.setName("ReplicationMonitor")
+        health_monitor.start()
+        self._worker_threads.append(health_monitor)
 
-def set_initial_role():
-    """
-    Sets the role of the database. If the election key exists, then the assumed role is 'Master', otherwise 'Standby'.
-    """
-    while state.INSTANCE.role is None:
-        logging.info("Checking whether the election key exists")
+    @staticmethod
+    def _register_consul_service():
+        """Registers the 'postgres' service in Consul."""
+        logging.info("Registering Consul service: postgres")
+        response = requests.put(state.CONSUL_BASE_URL + "/agent/service/register", json={"Name": "postgres"})
+        logging.info("Response (%d) %s", response.status_code, response.text)
+        response.raise_for_status()
+
+    def _start_election(self,):
+        """Starts the election worker thread."""
+        election = Election(election_consul_key=self._args.consul_key_prefix + "/master",
+                            consul_session_checks=[state.ALIVE_HEALTH_CHECK_NAME,
+                                                   state.STANDBY_REPLICATION_HEALTH_CHECK_NAME],
+                            election_status_handler=PostgresMasterElectionStatusHandler(),
+                            host_name=self._args.host_name,
+                            host_ip=self._args.host_ip,
+                            check_interval_seconds=self._args.check_interval)
+        election.start()
+        self._worker_threads.append(election)
+
+    def _start_management_server(self):
+        """Starts the management server worker thread."""
+        management_server = ManagementServer(self._args.management_port)
+        management_server.start()
+        self._worker_threads.append(management_server)
+
+    def stop(self, *args):
+        """Stops all worker threads, and waits for them to finish."""
+        for worker_thread in self._worker_threads:
+            worker_thread.stop()
+            if worker_thread.is_alive():
+                worker_thread.join()
+
+    def start(self):
+        """Starts the controller process."""
+        threading.current_thread().name = "Controller"
         try:
-            response = requests.get(Election.CONSUL_KV_URL.format(ELECTION_CONSUL_KEY))
-            logging.info("Response (%d) %s", response.status_code, response.text)
-            if response.status_code == 404:
-                state.INSTANCE.role = state.ROLE_MASTER
-            elif response.status_code == 200:
-                state.INSTANCE.role = state.ROLE_STANDBY
+            self._start_management_server()
+            self._start_alive_health_monitor()
+            self._start_standby_replication_health_monitor()
+            self._register_consul_service()
+            state.INSTANCE.wait_till_healthy()
+            self._start_election()
+            state.INSTANCE.done_initializing()
         except:
-            logging.exception("An error occurred while sending request to local consul client!")
-
-        time.sleep(3)
-
-
-def start_alive_health_monitor(args):
-    """Starts a monitoring worker thread with the alive health check."""
-    health_check = PostgresAliveCheck(args.alive_check_failure_threshold, args.connect_timeout)
-    health_monitor = HealthMonitor(health_check, args.check_interval)
-    health_monitor.setName("AliveMonitor")
-    health_monitor.start()
-    worker_threads.append(health_monitor)
-
-
-def start_standby_replication_health_monitor(args):
-    """Starts a monitoring worker thread with the standby replication health check."""
-    health_check = PostgresStandbyReplicationCheck(args.standby_replication_check_failure_threshold,
-                                                   args.connect_timeout)
-    health_monitor = HealthMonitor(health_check, args.check_interval)
-    health_monitor.setName("ReplicationMonitor")
-    health_monitor.start()
-    worker_threads.append(health_monitor)
-
-
-def register_consul_service():
-    """Registers the 'postgres' service in Consul."""
-    logging.info("Registering Consul service: postgres")
-    response = requests.put(Election.CONSUL_BASE_URL + "/agent/service/register", json={"Name": "postgres"})
-    logging.info("Response (%d) %s", response.status_code, response.text)
-    response.raise_for_status()
-
-
-def start_election(args):
-    """Starts the election worker thread."""
-    election = Election(election_consul_key=ELECTION_CONSUL_KEY,
-                        consul_session_checks=[state.ALIVE_HEALTH_CHECK_NAME,
-                                               state.STANDBY_REPLICATION_HEALTH_CHECK_NAME],
-                        election_status_handler=PostgresMasterElectionStatusHandler(),
-                        host_ip=args.pod_ip,
-                        check_interval_seconds=args.check_interval)
-    election.start()
-    worker_threads.append(election)
-
-
-def start_management_server(args):
-    """Starts the management server worker thread."""
-    management_server = ManagementServer(args.management_port)
-    management_server.start()
-    worker_threads.append(management_server)
-
-
-def stop(*args):
-    """Stops all worker threads, and waits for them to finish."""
-    for worker_thread in worker_threads:
-        worker_thread.stop()
-        if worker_thread.is_alive():
-            worker_thread.join()
-
-
-def start():
-    """Starts the controller process."""
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                        format='[%(asctime)s][%(threadName)s] %(levelname)s: %(message)s')
-
-    signal.signal(signal.SIGTERM, stop)
-
-    threading.current_thread().name = "Controller"
-    args = get_args()
-
-    try:
-        set_initial_role()
-        start_management_server(args)
-        start_alive_health_monitor(args)
-        start_standby_replication_health_monitor(args)
-        register_consul_service()
-        state.INSTANCE.wait_till_healthy()
-        start_election(args)
-        state.INSTANCE.done_initializing()
-    except:
-        logging.exception("An exception was encountered during startup!")
-        stop()
+            logging.exception("An exception was encountered during startup!")
+            self.stop()

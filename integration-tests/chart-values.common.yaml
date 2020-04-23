@@ -12,10 +12,11 @@ db:
         cpu: 200m
   controller:
     connectTimeout: 2
+    consulKeyPrefix: test-ha-postgres
     resources:
       limits:
         cpu: 75m
-  waitPgDataEmpty:
+  cleanData:
     resources:
       limits:
         cpu: 50m
