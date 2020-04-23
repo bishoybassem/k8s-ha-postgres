@@ -1,4 +1,12 @@
-import pg_controller.controller as controller
+import signal
+import logging
+import sys
+from pg_controller.controller import Controller
 
 
-controller.start()
+logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+                    format='[%(asctime)s][%(threadName)s] %(levelname)s: %(message)s')
+
+controller_process = Controller()
+signal.signal(signal.SIGTERM, controller_process.stop)
+controller_process.start()

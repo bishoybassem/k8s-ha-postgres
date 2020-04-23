@@ -13,13 +13,10 @@ data:
         timeout connect {{ .Values.lb.haproxy.timeouts.connect }}
         timeout client {{ .Values.lb.haproxy.timeouts.read }}
         timeout server {{ .Values.lb.haproxy.timeouts.read }}
-        option httpchk GET /controller/ready HTTP/1.1
-        default-server check port 80 fall 1 rise 1 inter {{ .Values.lb.haproxy.checkInterval }}
-        default-server on-marked-down shutdown-sessions
 
     listen master
         bind *:{{ .Values.lb.masterDbPort }}
-        server master0 127.0.0.1:5432 disabled        
+        server master0 127.0.0.1:5432 disabled
 
     listen standby
         bind *:{{ .Values.lb.standbyDbPort }}

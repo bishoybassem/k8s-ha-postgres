@@ -62,6 +62,9 @@ spec:
             - name: haproxy-scripts
               mountPath: /scripts
           workingDir: /scripts
+          env:
+            - name: CONSUL_KEY_PREFIX
+              value: {{ .Values.db.controller.consulKeyPrefix }}
           args:
             - -template=master.csv.tpl:/tmp/master.csv:sh manage-master.sh /tmp/master.csv
             - -template=standbys.csv.tpl:/tmp/standbys.csv:sh manage-standbys.sh /tmp/standbys.csv

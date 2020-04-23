@@ -1,5 +1,5 @@
-import threading
 import logging
+import threading
 
 
 class LoopingThread(threading.Thread):

@@ -150,7 +150,7 @@ def clean_pgdata(db_pod_name):
         'rm -rf /pgdata/*; touch /proceed']
 
     output = stream.stream(client.CoreV1Api().connect_get_namespaced_pod_exec, db_pod_name, MAIN_NAMESPACE,
-                           container='wait-pgdata-empty', command=cleanup_command, stderr=True, stdin=False,
+                           container='clean-data', command=cleanup_command, stderr=True, stdin=False,
                            stdout=True, tty=False)
 
     logging.info("Executed cleanup command for pod %s, output: %s", db_pod_name, output)

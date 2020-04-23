@@ -24,6 +24,7 @@ for entry in $servers_to_disable; do
 		echo "Disabling server $srv_name as it has a non-localhost ip..."
 		echo "set server standby/$srv_name state maint" | nc localhost 9998
 		echo "set server standby/$srv_name addr 127.0.0.1" | nc localhost 9998
+		echo "shutdown sessions server standby/$srv_name" | nc localhost 9998
 	fi
 done
 

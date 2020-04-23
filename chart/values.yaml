@@ -31,12 +31,13 @@ db:
     connectTimeout: 1
     aliveCheckFailureThreshold: 1
     standbyReplicationCheckFailureThreshold: 4
+    consulKeyPrefix: ha-postgres
     resources:
       limits:
         cpu: 250m
         memory: 64Mi
-  waitPgDataEmpty:
-    image: alpine:3.11
+  cleanData:
+    image: curlimages/curl:7.69.1
     resources:
       limits:
         cpu: 100m
@@ -53,7 +54,6 @@ lb:
     timeouts:
       connect: 2s
       read: 30m
-    checkInterval: 5s
     statsPort: 9999
     livenessProbe:
       initialDelaySeconds: 10

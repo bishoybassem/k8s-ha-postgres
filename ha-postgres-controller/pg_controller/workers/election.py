@@ -1,8 +1,9 @@
-import requests
-import socket
-from pg_controller.workers import looping_thread
 import logging
 from abc import ABC, abstractmethod
+
+import requests
+
+from pg_controller.workers import looping_thread
 
 
 class ElectionStatusHandler(ABC):
@@ -28,12 +29,13 @@ class Election(looping_thread.LoopingThread):
     CONSUL_SESSION_URL = CONSUL_BASE_URL + "/session/{}"
     CONSUL_KV_URL = CONSUL_BASE_URL + "/kv/{}"
 
-    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_ip,
+    def __init__(self, election_consul_key, consul_session_checks, election_status_handler, host_name, host_ip,
                  check_interval_seconds):
         """
          :param election_consul_key: The Consul key to acquire the lock over.
          :param consul_session_checks: The list of Consul check names to associate the session with.
          :param election_status_handler: An ElectionStatusHandler instance that handles the election status.
+         :param host_name: The host name to set in the election key's value if the lock was acquired.
          :param host_ip: The IP to set in the election key's value if the lock was acquired.
          :param check_interval_seconds: The time interval (in seconds) between two consecutive attempts.
          """
@@ -41,12 +43,13 @@ class Election(looping_thread.LoopingThread):
         self._election_consul_key = election_consul_key
         self._consul_session_checks = consul_session_checks
         self._election_status_handler = election_status_handler
+        self._host_name = host_name
         self._host_ip = host_ip
         self._create_consul_session()
 
     def _create_consul_session(self):
         logging.info("Creating Consul session for leader election")
-        response = requests.put(self.__class__.CONSUL_SESSION_URL.format("create"),
+        response = requests.put(self.CONSUL_SESSION_URL.format("create"),
                                 json={"Checks": self._consul_session_checks})
 
         logging.info("Response (%d) %s", response.status_code, response.text)
@@ -56,11 +59,10 @@ class Election(looping_thread.LoopingThread):
 
     def _acquire_lock(self):
         logging.info("Attempting to acquire lock over election key")
-        response = requests.put(self.__class__.CONSUL_KV_URL.format(self._election_consul_key),
-                                params={"acquire": self._session_id},
-                                json={
+        response = requests.put(self.CONSUL_KV_URL.format(self._election_consul_key),
+                                params={"acquire": self._session_id}, json={
                                     "host": self._host_ip,
-                                    "node": socket.gethostname()
+                                    "node": self._host_name
                                 })
 
         logging.info("Response (%d) %s", response.status_code, response.text)

@@ -1,7 +1,8 @@
 import http.server
+import logging
 import socketserver
 import threading
-import logging
+
 from pg_controller import state
 
 
