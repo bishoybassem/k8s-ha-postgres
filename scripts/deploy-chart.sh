@@ -13,19 +13,30 @@ postgres_image_tag=${POSTGRES_IMAGE_TAG:-12.2}
 docker build -t ha-postgres-controller:1.0.0 ha-postgres-controller/
 docker build --build-arg base_image_tag=$postgres_image_tag -t ha-postgres:$postgres_image_tag ha-postgres/
 
+
 if kubectl get ns $namespace; then
 	kubectl delete ns $namespace --timeout 2m
 fi
 
 kubectl create ns $namespace
+kubectl config set-context --current --namespace $namespace
+
+if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+	kubectl create secret docker-registry docker-hub-creds --docker-username="$DOCKER_USERNAME" --docker-password="$DOCKER_PASSWORD"
+	kubectl patch serviceaccount default -p '{"imagePullSecrets": [{"name": "docker-hub-creds"}]}'
+fi
+
+trap "kubectl get pods; kubectl describe pods" ERR
 
 files=("$@")
-helm -n $namespace install ${files[@]/#/-f } ha-postgres chart/
+helm install ${files[@]/#/-f } ha-postgres chart/
 
-db_replicas=$(kubectl -n $namespace get sts ha-postgres -o jsonpath='{.spec.replicas}')
+db_replicas=$(kubectl get sts ha-postgres -o jsonpath='{.spec.replicas}')
 echo "Waiting for $db_replicas ready db replicas"
-while [ "$(kubectl -n $namespace get sts ha-postgres -o jsonpath='{.status.readyReplicas}')" != "$db_replicas" ]; do 
-	sleep 5s
-done
+timeout 4m bash <<-EOF
+	while [ "\$(kubectl get sts ha-postgres -o jsonpath='{.status.readyReplicas}')" != "$db_replicas" ]; do
+		sleep 5s
+	done
+EOF
 
-kubectl -n $namespace get pods
+kubectl get pods
